@@ -1,0 +1,7 @@
+streamlit
+pandas
+mathplotlib
+utilidades
+plotly.express
+PIL
+plotly.graph_objects
