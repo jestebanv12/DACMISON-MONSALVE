@@ -1,7 +1,5 @@
 streamlit
 pandas
-mathplotlib
-utilidades
-plotly.express
-PIL
-plotly.graph_objects
+matplotlib
+plotly
+Pillow
