@@ -29,7 +29,7 @@ def generar_menu():
     opciones = {
         "🏠 Inicio": "inicio",
         "⚙️ Vendedores": "Vendedores",
-        "ℹ️ Acerca de": "acerca"
+        "ℹ️ Cliente": "clientes"
     }
 
     # Crear botones en la barra lateral
@@ -77,6 +77,7 @@ if pagina == "inicio":
             titulo_grafica = "Ventas Anuales con Crecimiento (%)" 
             # Top 10 de GRUPO TRES
             df_top10 = df.groupby("GRUPO TRES").agg({"TOTAL V": "sum"}).reset_index()
+            
         else:
             orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
                        "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
@@ -109,8 +110,10 @@ if pagina == "inicio":
 
         # Mostrar el top 10 de "GRUPO TRES" SIN crecimiento
         df_top10 = df_top10.sort_values(by="TOTAL V", ascending=False).head(10)
+        df_top10["TOTAL V"] = df_top10["TOTAL V"].apply(lambda x: f"${x:,.2f}")  # Formatear como moneda
+
         st.write(f"### Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-        st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]],hide_index=True)  # Excluir "Crecimiento (%)"
+        st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]], hide_index=True) 
     
 elif pagina == "Vendedores":
     st.title("⚙️ Ventas por vendedor")
@@ -175,33 +178,87 @@ elif pagina == "Vendedores":
             titulo_grafica = f"Ventas de {vendedor_seleccionado} en {año_seleccionado}"
     
         # Mostrar gráfico
-        fig = px.bar(df_agrupado, x=eje_x, y="TOTAL V", title=titulo_grafica, text_auto=True)
+        # Formatear los valores como moneda
+        df_agrupado["TOTAL V"] = pd.to_numeric(df_agrupado["TOTAL V"], errors="coerce")  # Asegurar que es numérico
+
+        fig = px.bar(
+            df_agrupado, 
+            x=eje_x, 
+            y="TOTAL V", 
+            title=titulo_grafica, 
+            text_auto=True
+)
+
+        # Formato de moneda en las etiquetas
+        fig.update_traces(texttemplate="$%{y:,.2f} ", textposition="outside")
+
+        # Formato de moneda en el eje Y
+        fig.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",", xaxis_title=eje_x, yaxis_title="Ventas ($)")
+
         st.plotly_chart(fig, use_container_width=True)
     
         # Mostrar tablas Top 10 lado a lado
-        col5, col6 = st.columns(2)
+        col5, col6 = st.columns(2,gap="large")
     
         with col5:
-            st.subheader("🏆 Top 10 RAZON SOCIAL")
-            df_top_razon = df_filtrado.groupby("RAZON SOCIAL").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.write(df_top_razon.set_index("RAZON SOCIAL"))
-    
+            # Mostrar Top 10 de Departamentos o Ciudades debajo
+            st.subheader("🏆 Top 10 por Ubicación")
+
+            # Función para aplicar estilos en la tabla
+            def estilo_dataframe(df):
+                return df.style.set_properties(**{
+                "text-align": "left",  # Alinear todo a la izquierda
+                "white-space": "nowrap"  # Ajustar ancho de la primera columna
+                }).format({"TOTAL V": "$ {:,.2f}"})  # Formato moneda
+
+            if dpto_seleccionado == "Todos":
+                df_top_dpto = df_filtrado.groupby("DPTO").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+                st.dataframe(estilo_dataframe(df_top_dpto), hide_index=True, use_container_width=True)
+
+            else:
+                df_top_ciudades = df_filtrado.groupby("CIUDAD").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+                st.dataframe(estilo_dataframe(df_top_ciudades), hide_index=True, use_container_width=True)   
         with col6:
             st.subheader("🏆 Top 10 REFERENCIA")
-            df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.write(df_top_referencia.set_index("REFERENCIA"))
+
+            # Agrupar y ordenar datos
+            df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index()
+            df_top_referencia = df_top_referencia.sort_values(by="TOTAL V", ascending=False).head(10)
+
+            # Formatear columna "TOTAL V" con signo de moneda adelante
+            df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
+
+            # Aplicar estilos para autoajustar columnas
+            st.dataframe(
+            df_top_referencia.set_index("REFERENCIA").style.set_properties(**{
+            "text-align": "left",  # Alinear a la izquierda
+            "white-space": "nowrap"  # Evitar saltos de línea
+    }),
+            hide_index=False,  # Mantener encabezado de "REFERENCIA"
+            use_container_width=True  # Ajustar al ancho disponible
+)
     
         # Mostrar Top 10 de Departamentos o Ciudades debajo
-        st.subheader("🏆 Top 10 por Ubicación")
-    
-        if dpto_seleccionado == "Todos":
-            df_top_dpto = df_filtrado.groupby("DPTO").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.write(df_top_dpto.set_index("DPTO"))
-        else:
-            df_top_ciudades = df_filtrado.groupby("CIUDAD").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.write(df_top_ciudades.set_index("CIUDAD"))
-elif pagina == "acerca":
-    st.title("ℹ️ Acerca de")
+        st.markdown("<h3 style='text-align: center;'>🏆 Top 10 RAZON SOCIAL</h3>", unsafe_allow_html=True)    
+
+        # Agrupar y ordenar datos
+        df_top_razon = df_filtrado.groupby("RAZON SOCIAL").agg({"TOTAL V": "sum"}).reset_index()
+        df_top_razon = df_top_razon.sort_values(by="TOTAL V", ascending=False).head(10)
+
+        # Formatear columna "TOTAL V" con signo de moneda adelante
+        df_top_razon["TOTAL V"] = df_top_razon["TOTAL V"].apply(lambda x: f"${x:,.2f}")
+
+        # Aplicar estilos para autoajustar columnas y usar todo el ancho
+        st.dataframe(
+         df_top_razon.set_index("RAZON SOCIAL").style.set_properties(**{
+        "text-align": "left",  # Alinear texto a la izquierda
+        "white-space": "nowrap"  # Evitar saltos de línea
+    }),
+        hide_index=False,  # Mantener encabezado de "RAZON SOCIAL"
+        use_container_width=True  # Ajustar al ancho disponible
+)
+elif pagina == "clientes":
+    st.title("ℹ️ Clientes")
     st.write("Aplicación creada con Streamlit.")
 
 
