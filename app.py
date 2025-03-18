@@ -5,6 +5,9 @@ import streamlit as st
 from PIL import Image 
 import plotly.express as px
 import plotly.graph_objects as go
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 
 st.set_page_config(
     page_title="TPM",
@@ -28,8 +31,9 @@ def generar_menu():
     # Opciones del menú con emojis o iconos
     opciones = {
         "🏠 Inicio": "inicio",
-        "⚙️ Vendedores": "Vendedores",
-        "ℹ️ Cliente": "clientes"
+        "👩‍🏭 Vendedores": "Vendedores",
+        "ℹ️ Cliente": "clientes",
+        "⚙️ Referencias":"Referencias"
     }
 
     # Crear botones en la barra lateral
@@ -116,7 +120,7 @@ if pagina == "inicio":
         st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]], hide_index=True) 
     
 elif pagina == "Vendedores":
-    st.title("⚙️ Ventas por vendedor")
+    st.title("👩‍🏭 Ventas por vendedor")
     
     # Cargar datos
     @st.cache_data
@@ -259,9 +263,136 @@ elif pagina == "Vendedores":
 )
 elif pagina == "clientes":
     st.title("ℹ️ Clientes")
-    st.write("Aplicación creada con Streamlit.")
+    
+    # Cargar datos
+    @st.cache_data
+    def cargar_datos():
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str, "DIA": str})
+        df.columns = df.columns.str.strip()
+        df.rename(columns=lambda x: x.strip(), inplace=True)
+        return df
+
+    df = cargar_datos()
+
+    # Verificar que el archivo CSV tenga las columnas correctas
+    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "RAZON SOCIAL", "REFERENCIA"}
+    if not columnas_requeridas.issubset(set(df.columns)):
+        st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
+    else:
+        st.subheader("📊 Informe de Ventas", divider="blue")
+    
+        col1, col2 = st.columns([2,1])
+        with col1:
+            razon_social_seleccionada = st.selectbox("Buscar Razón Social", [""] + sorted(df["RAZON SOCIAL"].unique()), index=0)
+        with col2:
+            año_seleccionado = st.selectbox("Año", ["Todos"] + sorted(df["AÑO"].unique()))
+    
+        # Filtrar datos según selección
+        df_filtrado = df.copy()
+    
+        if razon_social_seleccionada:
+            df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.contains(razon_social_seleccionada, case=False, na=False)]
+    
+        if año_seleccionado != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_seleccionado]
+    
+        # Mostrar Top 10 de Referencias
+        st.subheader("🏆 Top 10 REFERENCIA")
+        df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+        df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
+        st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
+    
+        # Mostrar Gráficos si se selecciona Razón Social
+        if razon_social_seleccionada:
+            st.subheader("📈 Ventas de la Razón Social")
+    
+            if año_seleccionado == "Todos":
+                df_grafico = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
+                df_grafico["AÑO"] = df_grafico["AÑO"].astype(str)  # Convertir el año a string para evitar decimales
+                x_axis = "AÑO"
+            else:
+                df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], 
+                categories=["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
+                        "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"], 
+                ordered=True)
+                df_grafico = df_filtrado.groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
+                x_axis = "MES"
+    
+                # Gráfica de barras con eje X sin decimales
+            fig_bar = px.bar(df_grafico, 
+                     x=x_axis, 
+                     y="TOTAL V", 
+                     title="Ventas por Periodo", 
+                     
+                     color_discrete_sequence=["green"])  # Color naranja
+
+            # Asegurar que el eje X de los años no tenga valores intermedios
+            if x_axis == "AÑO":
+                fig_bar.update_xaxes(type="category")  # Forzar eje X como categórico
+    
+                st.plotly_chart(fig_bar, use_container_width=True)
 
 
+if pagina == "Referencias":
+    st.title("⚙️ Referencias")
+    # Cargar datos
+    @st.cache_data
+    def cargar_datos():
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str, "DIA": str})
+        df.columns = df.columns.str.strip()
+        df.rename(columns=lambda x: x.strip(), inplace=True)
+        return df
 
+    df = cargar_datos()
 
-
+    # Verificar que el archivo CSV tenga las columnas correctas
+    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "RAZON SOCIAL", "REFERENCIA"}
+    if not columnas_requeridas.issubset(set(df.columns)):
+        st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
+    else:
+        st.subheader("📊 Informe de Ventas", divider="blue")
+    
+        col1, col2, col3 = st.columns([2,2,1])
+        with col1:
+            referencia_seleccionada = st.selectbox("Buscar Referencia", [""] + sorted(df["REFERENCIA"].unique()), index=0)
+        with col2:
+            razon_social_seleccionada = st.selectbox("Buscar Razón Social", [""] + sorted(df["RAZON SOCIAL"].unique()), index=0)
+        with col3:
+            año_seleccionado = st.selectbox("Año", ["Todos"] + sorted(df["AÑO"].astype(int).unique()))
+    
+        # Filtrar datos según selección
+        df_filtrado = df.copy()
+    
+        if referencia_seleccionada:
+            df_filtrado = df_filtrado[df_filtrado["REFERENCIA"].str.contains(referencia_seleccionada, case=False, na=False)]
+    
+        if razon_social_seleccionada:
+            df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.contains(razon_social_seleccionada, case=False, na=False)]
+    
+        if año_seleccionado != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["AÑO"].astype(int) == int(año_seleccionado)]
+    
+        # Si se selecciona una referencia y un año, mostrar tabla
+        if referencia_seleccionada and año_seleccionado != "Todos":
+            st.subheader("📊 Ventas de la Referencia en el Año")
+            df_ref_año = df_filtrado.groupby(["AÑO", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
+            df_ref_año["TOTAL V"] = df_ref_año["TOTAL V"].apply(lambda x: f"${x:,.2f}")
+            st.dataframe(df_ref_año, use_container_width=True)
+    
+        # Si no se selecciona referencia, mostrar Top 10
+        else:
+            st.subheader("🏆 Top 10 REFERENCIA")
+            df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+            df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
+            st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
+    
+        # Mostrar gráficos si se selecciona Razón Social
+        if razon_social_seleccionada:
+            st.subheader("📊 Ventas de la Razón Social")
+            df_filtrado["AÑO"] = df_filtrado["AÑO"].astype(int)
+            df_grafico = df_filtrado.groupby("AÑO" if año_seleccionado == "Todos" else "MES").agg({"TOTAL V": "sum"}).reset_index()
+            x_axis = "AÑO" if año_seleccionado == "Todos" else "MES"
+        
+            # Gráfico de barras
+            fig_bar = px.bar(df_grafico, x=x_axis, y="TOTAL V", title="Ventas por Periodo", color_discrete_sequence=["#FF5733"])  # Color naranja
+            st.plotly_chart(fig_bar, use_container_width=True)
