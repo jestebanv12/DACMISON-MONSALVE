@@ -33,7 +33,8 @@ def generar_menu():
         "🏠 Inicio": "inicio",
         "👩‍🏭 Vendedores": "Vendedores",
         "ℹ️ Cliente": "clientes",
-        "⚙️ Referencias":"Referencias"
+        "⚙️ Referencias":"Referencias",
+        "💯TPM":"TPM"
     }
 
     # Crear botones en la barra lateral
@@ -392,7 +393,96 @@ if pagina == "Referencias":
             df_filtrado["AÑO"] = df_filtrado["AÑO"].astype(int)
             df_grafico = df_filtrado.groupby("AÑO" if año_seleccionado == "Todos" else "MES").agg({"TOTAL V": "sum"}).reset_index()
             x_axis = "AÑO" if año_seleccionado == "Todos" else "MES"
-        
-            # Gráfico de barras
-            fig_bar = px.bar(df_grafico, x=x_axis, y="TOTAL V", title="Ventas por Periodo", color_discrete_sequence=["#FF5733"])  # Color naranja
-            st.plotly_chart(fig_bar, use_container_width=True)
+    
+            # Convert to string to treat as category
+            df_grafico[x_axis] = df_grafico[x_axis].astype(str)
+    
+            fig = px.bar(df_grafico, x=x_axis, y="TOTAL V", color_discrete_sequence=['blue'])
+    
+            # Force categorical axis
+            fig.update_xaxes(type='category')
+    
+            st.plotly_chart(fig, use_container_width=True)
+if pagina == "TPM":
+    # Cargar datos
+    @st.cache_data
+    def cargar_datos():
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
+        df.columns = df.columns.str.strip()
+        df.rename(columns=lambda x: x.strip(), inplace=True)
+
+        # Convertir nombres de meses a números si es necesario
+        meses_dict = {
+            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
+            "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
+        }
+
+        # Normalizar nombres de meses a números si están en texto
+        if df["MES"].dtype == object:
+            df["MES"] = df["MES"].str.upper().map(meses_dict)
+
+        # Convertir columnas numéricas correctamente
+        df["AÑO"] = df["AÑO"].astype(float).astype(int)
+        df["MES"] = pd.to_numeric(df["MES"], errors="coerce").fillna(0).astype(int)
+        df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce").fillna(0)
+        df["TOTAL C"] = pd.to_numeric(df["TOTAL C"], errors="coerce").fillna(0)
+
+        # Filtrar meses válidos
+        df = df[df["MES"].between(1, 12)]
+
+        return df
+
+    df = cargar_datos()
+
+    # Verificar columnas
+    columnas_requeridas = {"AÑO", "MES", "TOTAL V", "TOTAL C"}
+    if not columnas_requeridas.issubset(set(df.columns)):
+        st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
+    else:
+        st.subheader("📊 Ventas y Costos Totales", divider="blue")
+
+        # Selector de año
+        opciones_año = ["Todos"] + sorted(df["AÑO"].unique())
+        año_seleccionado = st.selectbox("Seleccione un año", opciones_año)
+
+        # Filtrar datos
+        df_filtrado = df if año_seleccionado == "Todos" else df[df["AÑO"] == int(año_seleccionado)]
+
+        # Verificar si hay datos después del filtrado
+        if df_filtrado.empty:
+            st.warning("No hay datos disponibles para esta selección.")
+        else:
+            # Mapear meses de números a nombres
+            meses_map = {
+                1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+                7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        }
+            df_filtrado["MES"] = df_filtrado["MES"].map(meses_map)
+
+            # Agrupar datos
+            x_axis = "AÑO" if año_seleccionado == "Todos" else "MES"
+            df_grafico = df_filtrado.groupby(x_axis).agg({"TOTAL V": "sum", "TOTAL C": "sum"}).reset_index()
+
+            # Ordenar los meses correctamente si se elige un solo año
+            if x_axis == "MES":
+                df_grafico["MES"] = pd.Categorical(df_grafico["MES"], categories=meses_map.values(), ordered=True)
+                df_grafico = df_grafico.sort_values("MES")
+
+            # Gráfico de áreas con ventas por encima de costos
+        # Gráfico de áreas
+    # Gráfico de áreas con orden corregido (ventas encima de costos)
+    fig_area = px.area(df_grafico, x=x_axis, y=["TOTAL C", "TOTAL V"],  # Invertimos el orden
+                   title="Ventas y Costos Totales", labels={"value": "Monto ($)"},
+                   color_discrete_sequence=["#ff7f0e", "#1f77b4"])  # Colores personalizados
+
+    # Forzar años enteros en el eje X
+    fig_area.update_xaxes(tickmode="array", tickvals=df_grafico[x_axis].unique(), tickformat=".0f")
+    # Formatear el eje Y para mostrar valores en millones con "M"
+    fig_area.update_layout(
+    yaxis=dict(
+        tickformat=",.0f",  # Formato de número entero sin decimales
+        title="Monto ($ Millones)"  # Etiqueta del eje Y
+    )
+    )
+
+    st.plotly_chart(fig_area, use_container_width=True)
