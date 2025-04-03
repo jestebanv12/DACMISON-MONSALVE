@@ -53,7 +53,7 @@ pagina = generar_menu()
 
 if pagina == "inicio":
     st.title("🏠 Base de datos General")
-    st.subheader("Ventas desde el 2021.")
+    st.subheader("Ventas desde el 2022.")
     # Cargar datos desde CSV con limpieza de nombres
     @st.cache_data
     def cargar_datos():
