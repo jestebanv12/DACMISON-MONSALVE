@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 def main():
-    st.title("Informe de Ventas 2024")
+    st.title("Informe de Ventas 2025")
 if __name__=="__main__":
     main()
 
