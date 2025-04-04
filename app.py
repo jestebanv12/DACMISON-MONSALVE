@@ -304,8 +304,8 @@ elif pagina == "clientes":
         st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
     
         # Mostrar Gráficos si se selecciona Razón Social
-if razon_social_seleccionada:
-    st.subheader("📈 Ventas de la Razón Social")
+    if razon_social_seleccionada:
+        st.subheader("📈 Ventas de la Razón Social")
 
     if df_filtrado.empty:
         st.warning("No hay datos para mostrar en la gráfica.")
