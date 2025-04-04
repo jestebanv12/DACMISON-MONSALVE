@@ -403,8 +403,7 @@ if pagina == "Referencias":
     
             # Force categorical axis
             fig.update_xaxes(type='category')
-            if eje_x == "AÑO":
-                fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
+            
 
     
             st.plotly_chart(fig, use_container_width=True)
