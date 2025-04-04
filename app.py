@@ -326,7 +326,7 @@ elif pagina == "clientes":
             )
             fig_bar.update_traces(texttemplate="$%{y:,.2f}", textposition="outside")
             fig_bar.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",")
-            st.plotly_chart(fig_bar, use_container_width=True)
+            
 
 
             # Asegurar que el eje X de los años no tenga valores intermedios
@@ -403,6 +403,9 @@ if pagina == "Referencias":
     
             # Force categorical axis
             fig.update_xaxes(type='category')
+            if eje_x == "AÑO":
+                fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
+
     
             st.plotly_chart(fig, use_container_width=True)
 if pagina == "TPM":
