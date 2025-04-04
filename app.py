@@ -201,6 +201,9 @@ elif pagina == "Vendedores":
 
         # Formato de moneda en el eje Y
         fig.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",", xaxis_title=eje_x, yaxis_title="Ventas ($)")
+        # Corregir formato del eje X cuando se trata de años
+        if eje_x == "AÑO":
+            fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
 
         st.plotly_chart(fig, use_container_width=True)
     
