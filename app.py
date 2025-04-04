@@ -304,28 +304,45 @@ elif pagina == "clientes":
         st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
     
         # Mostrar Gráficos si se selecciona Razón Social
-        if razon_social_seleccionada:
-            st.subheader("📈 Ventas de la Razón Social")
-    
-            if año_seleccionado == "Todos":
-                df_grafico = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
-                df_grafico["AÑO"] = df_grafico["AÑO"].astype(str)  # Convertir el año a string para evitar decimales
-                x_axis = "AÑO"
-            else:
-                df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], 
-                categories=["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
-                        "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"], 
-                ordered=True)
-                df_grafico = df_filtrado.groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
-                x_axis = "MES"
-    
-                # Gráfica de barras con eje X sin decimales
-            fig_bar = px.bar(df_grafico, 
-                     x=x_axis, 
-                     y="TOTAL V", 
-                     title="Ventas por Periodo", 
-                     
-                     color_discrete_sequence=["green"])  # Color naranja
+if razon_social_seleccionada:
+    st.subheader("📈 Ventas de la Razón Social")
+
+    if df_filtrado.empty:
+        st.warning("No hay datos para mostrar en la gráfica.")
+    else:
+        if año_seleccionado == "Todos":
+            df_grafico = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
+            df_grafico["AÑO"] = df_grafico["AÑO"].astype(str)
+            x_axis = "AÑO"
+        else:
+            # Ordenar meses
+            orden_meses = [
+                "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+            ]
+            # Normalizar nombres de meses
+            df_filtrado["MES"] = df_filtrado["MES"].str.strip().str.upper()
+            df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
+
+            df_grafico = df_filtrado.groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
+            x_axis = "MES"
+
+        # Verificamos si hay datos reales para graficar
+        if df_grafico["TOTAL V"].sum() == 0:
+            st.warning("No hay ventas registradas para esta selección.")
+        else:
+            fig_bar = px.bar(
+                df_grafico,
+                x=x_axis,
+                y="TOTAL V",
+                title="Ventas por Periodo",
+                text_auto=True,
+                color_discrete_sequence=["green"]
+            )
+            fig_bar.update_traces(texttemplate="$%{y:,.2f}", textposition="outside")
+            fig_bar.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",")
+            st.plotly_chart(fig_bar, use_container_width=True)
+
 
             # Asegurar que el eje X de los años no tenga valores intermedios
             if x_axis == "AÑO":
