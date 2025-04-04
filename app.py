@@ -207,7 +207,8 @@ elif pagina == "Vendedores":
             x=eje_x, 
             y="TOTAL V", 
             title=titulo_grafica, 
-            text_auto=True
+            text_auto=True,
+            color_discrete_sequence=["#00CED1"]
 )
 
         # Formato de moneda en las etiquetas
@@ -399,7 +400,7 @@ if pagina == "Referencias":
             # Convert to string to treat as category
             df_grafico[x_axis] = df_grafico[x_axis].astype(str)
     
-            fig = px.bar(df_grafico, x=x_axis, y="TOTAL V", color_discrete_sequence=['blue'])
+            fig = px.bar(df_grafico, x=x_axis, y="TOTAL V", color_discrete_sequence=['#5F9EA0'])
     
             # Force categorical axis
             fig.update_xaxes(type='category')
