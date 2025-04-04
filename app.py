@@ -124,162 +124,129 @@ if pagina == "inicio":
     
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
-    
-    # Cargar datos
     @st.cache_data
     def cargar_datos():
-        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str, "DIA": str})
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python")
         df.columns = df.columns.str.strip()
-        df.rename(columns=lambda x: x.strip(), inplace=True)
+        df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce")
+        df["AÑO"] = pd.to_numeric(df["AÑO"], errors="coerce")
         return df
 
     df = cargar_datos()
+    df["MES"] = df["MES"].astype(str).str.strip().str.upper()
+    # Validar columnas necesarias
+    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "GRUPO TRES"}
+    if not columnas_requeridas.issubset(df.columns):
+        st.error(f"Faltan columnas requeridas: {columnas_requeridas - set(df.columns)}")
+        st.stop()
 
-    # Verificar que el archivo CSV tenga las columnas correctas
-    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "VENDEDOR", "DPTO", "CIUDAD", "RAZON SOCIAL", "REFERENCIA"}
-    if not columnas_requeridas.issubset(set(df.columns)):
-        st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
+    # Filtros
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        vendedor_seleccionado = st.selectbox("Vendedor", ["Todos"] + sorted(df["VENDEDOR"].dropna().unique()))
+
+    with col2:
+        años_disponibles = sorted(df["AÑO"].dropna().unique())
+        año_seleccionado = st.selectbox("Año", ["Todos"] + list(map(str, años_disponibles)))
+
+    with col3:
+        dpto_seleccionado = st.selectbox("Departamento", ["Todos"] + sorted(df["DPTO"].dropna().unique()))
+
+    with col4:
+        ciudades_disponibles = (
+            df[df["DPTO"] == dpto_seleccionado]["CIUDAD"].dropna().unique().tolist()
+            if dpto_seleccionado != "Todos"
+            else sorted(df["CIUDAD"].dropna().unique().tolist())
+        )
+        ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + sorted(ciudades_disponibles))
+
+    df["VENDEDOR"] = df["VENDEDOR"].str.strip()
+    df["AÑO"] = pd.to_numeric(df["AÑO"], errors="coerce")
+    df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce")
+
+    
+    # Aplicar filtros
+    df_filtrado = df.copy()
+
+    if vendedor_seleccionado != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["VENDEDOR"].str.strip() == vendedor_seleccionado.strip()]
+
+
+    if año_seleccionado != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["AÑO"] == int(año_seleccionado)]
+
+    if dpto_seleccionado != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["DPTO"] == dpto_seleccionado]
+
+    if ciudad_seleccionada != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_seleccionada]
+    
+    
+        
+    
     else:
-        st.subheader("📊 Informe de Ventas")
-    
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            vendedor_seleccionado = st.selectbox("Vendedor", ["Todos"] + sorted(df["VENDEDOR"].dropna().unique().tolist()))
-        with col2:
-            año_seleccionado = st.selectbox("Año", ["Todos"] + sorted(df["AÑO"].unique()))
-        with col3:
-            dpto_seleccionado = st.selectbox("Departamento", ["Todos"] + sorted(df["DPTO"].dropna().unique().tolist()))
-        with col4:
-            ciudades_disponibles = df[df["DPTO"] == dpto_seleccionado]["CIUDAD"].dropna().unique().tolist() if dpto_seleccionado != "Todos" else sorted(df["CIUDAD"].dropna().unique().tolist())
-            ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + sorted(ciudades_disponibles))
-    
-        # Filtrar datos según selección
-        df_filtrado = df.copy()
-    
-        if vendedor_seleccionado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["VENDEDOR"] == vendedor_seleccionado]
-    
-        if año_seleccionado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_seleccionado]
-    
-        if dpto_seleccionado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["DPTO"] == dpto_seleccionado]
-    
-        if ciudad_seleccionada != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_seleccionada]
-    
-        # Definir agrupación según selección
-        if vendedor_seleccionado == "Todos":
-            df_agrupado = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
+        # Agrupación para la gráfica
+        if vendedor_seleccionado == "Todos" or año_seleccionado == "Todos":
+            df_agrupado = df_filtrado.groupby("AÑO")["TOTAL V"].sum().reset_index()
             eje_x = "AÑO"
-            titulo_grafica = "Ventas Totales de la Empresa"
-        elif año_seleccionado == "Todos":
-            df_agrupado = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
-            df_agrupado["AÑO"] = df_agrupado["AÑO"].astype(str)
-            eje_x = "AÑO"
-            titulo_grafica = f"Ventas de {vendedor_seleccionado} por Año"
+            titulo_grafica = "Ventas Totales de la Empresa" if vendedor_seleccionado == "Todos" else f"Ventas de {vendedor_seleccionado} por Año"
         else:
             orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
             df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
-            df_agrupado = df_filtrado.groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
+            df_agrupado = df_filtrado.groupby("MES")["TOTAL V"].sum().reset_index()
             eje_x = "MES"
             titulo_grafica = f"Ventas de {vendedor_seleccionado} en {año_seleccionado}"
-    
+
         # Mostrar gráfico
         # Formatear los valores como moneda
         df_agrupado["TOTAL V"] = pd.to_numeric(df_agrupado["TOTAL V"], errors="coerce")  # Asegurar que es numérico
-
-        # Asegurar que los años son strings para evitar el formato decimal
-        if eje_x == "AÑO":
-            df_agrupado["AÑO"] = df_agrupado["AÑO"].astype(str)
 
         fig = px.bar(
             df_agrupado, 
             x=eje_x, 
             y="TOTAL V", 
             title=titulo_grafica, 
-            text_auto=True,
-            category_orders={eje_x: sorted(df_agrupado[eje_x].unique())}  # Orden explícito de categorías
-        )
+            text_auto=True
+)
 
         # Formato de moneda en las etiquetas
         fig.update_traces(texttemplate="$%{y:,.2f} ", textposition="outside")
 
-        # Formato de moneda en el eje Y y configuración específica para el eje X
-        fig.update_layout(
-            yaxis_tickprefix="$", 
-            yaxis_tickformat=",", 
-            xaxis_title=eje_x, 
-            yaxis_title="Ventas ($)",
-            xaxis=dict(
-                type="category",  # Forzar tipo categoría
-                tickmode="array",  # Modo de ticks personalizado
-                tickvals=df_agrupado[eje_x].tolist()  # Valores exactos para los ticks
-            )
-        )
+        # Formato de moneda en el eje Y
+        fig.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",", xaxis_title=eje_x, yaxis_title="Ventas ($)")
+        # Corregir formato del eje X cuando se trata de años
+        if eje_x == "AÑO":
+            fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
 
         st.plotly_chart(fig, use_container_width=True)
-    
-        # Mostrar tablas Top 10 lado a lado
-        col5, col6 = st.columns(2,gap="large")
-    
+
+        # Tablas Top 10
+        col5, col6 = st.columns(2, gap="large")
+
+        def estilo_dataframe(df):
+            return df.style.set_properties(**{
+                "text-align": "left",
+                "white-space": "nowrap"
+            }).format({"TOTAL V": "$ {:,.2f}"})
+
         with col5:
-            # Mostrar Top 10 de Departamentos o Ciudades debajo
             st.subheader("🏆 Top 10 por Ubicación")
-
-            # Función para aplicar estilos en la tabla
-            def estilo_dataframe(df):
-                return df.style.set_properties(**{
-                "text-align": "left",  # Alinear todo a la izquierda
-                "white-space": "nowrap"  # Ajustar ancho de la primera columna
-                }).format({"TOTAL V": "$ {:,.2f}"})  # Formato moneda
-
             if dpto_seleccionado == "Todos":
-                df_top_dpto = df_filtrado.groupby("DPTO").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-                st.dataframe(estilo_dataframe(df_top_dpto), hide_index=True, use_container_width=True)
-
+                top = df_filtrado.groupby("DPTO")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
             else:
-                df_top_ciudades = df_filtrado.groupby("CIUDAD").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-                st.dataframe(estilo_dataframe(df_top_ciudades), hide_index=True, use_container_width=True)   
+                top = df_filtrado.groupby("CIUDAD")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+            st.dataframe(estilo_dataframe(top), use_container_width=True, hide_index=True)
+
         with col6:
             st.subheader("🏆 Top 10 REFERENCIA")
+            top_ref = df_filtrado.groupby("REFERENCIA")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+            st.dataframe(estilo_dataframe(top_ref.set_index("REFERENCIA")), use_container_width=True)
 
-            # Agrupar y ordenar datos
-            df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index()
-            df_top_referencia = df_top_referencia.sort_values(by="TOTAL V", ascending=False).head(10)
+        st.markdown("<h3 style='text-align: center;'>🏆 Top 10 RAZON SOCIAL</h3>", unsafe_allow_html=True)
+        top_razon = df_filtrado.groupby("RAZON SOCIAL")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
+        st.dataframe(estilo_dataframe(top_razon.set_index("RAZON SOCIAL")), use_container_width=True)
 
-            # Formatear columna "TOTAL V" con signo de moneda adelante
-            df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
-
-            # Aplicar estilos para autoajustar columnas
-            st.dataframe(
-            df_top_referencia.set_index("REFERENCIA").style.set_properties(**{
-            "text-align": "left",  # Alinear a la izquierda
-            "white-space": "nowrap"  # Evitar saltos de línea
-    }),
-            hide_index=False,  # Mantener encabezado de "REFERENCIA"
-            use_container_width=True  # Ajustar al ancho disponible
-)
-    
-        # Mostrar Top 10 de Departamentos o Ciudades debajo
-        st.markdown("<h3 style='text-align: center;'>🏆 Top 10 RAZON SOCIAL</h3>", unsafe_allow_html=True)    
-
-        # Agrupar y ordenar datos
-        df_top_razon = df_filtrado.groupby("RAZON SOCIAL").agg({"TOTAL V": "sum"}).reset_index()
-        df_top_razon = df_top_razon.sort_values(by="TOTAL V", ascending=False).head(10)
-
-        # Formatear columna "TOTAL V" con signo de moneda adelante
-        df_top_razon["TOTAL V"] = df_top_razon["TOTAL V"].apply(lambda x: f"${x:,.2f}")
-
-        # Aplicar estilos para autoajustar columnas y usar todo el ancho
-        st.dataframe(
-         df_top_razon.set_index("RAZON SOCIAL").style.set_properties(**{
-        "text-align": "left",  # Alinear texto a la izquierda
-        "white-space": "nowrap"  # Evitar saltos de línea
-    }),
-        hide_index=False,  # Mantener encabezado de "RAZON SOCIAL"
-        use_container_width=True  # Ajustar al ancho disponible
-) 
 elif pagina == "clientes":
     st.title("ℹ️ Clientes")
     
