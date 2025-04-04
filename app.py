@@ -175,6 +175,7 @@ elif pagina == "Vendedores":
             titulo_grafica = "Ventas Totales de la Empresa"
         elif año_seleccionado == "Todos":
             df_agrupado = df_filtrado.groupby("AÑO").agg({"TOTAL V": "sum"}).reset_index()
+            df_agrupado["AÑO"] = df_agrupado["AÑO"].astype(str)
             eje_x = "AÑO"
             titulo_grafica = f"Ventas de {vendedor_seleccionado} por Año"
         else:
@@ -188,22 +189,34 @@ elif pagina == "Vendedores":
         # Formatear los valores como moneda
         df_agrupado["TOTAL V"] = pd.to_numeric(df_agrupado["TOTAL V"], errors="coerce")  # Asegurar que es numérico
 
+        # Asegurar que los años son strings para evitar el formato decimal
+        if eje_x == "AÑO":
+            df_agrupado["AÑO"] = df_agrupado["AÑO"].astype(str)
+
         fig = px.bar(
             df_agrupado, 
             x=eje_x, 
             y="TOTAL V", 
             title=titulo_grafica, 
-            text_auto=True
-)
+            text_auto=True,
+            category_orders={eje_x: sorted(df_agrupado[eje_x].unique())}  # Orden explícito de categorías
+        )
 
         # Formato de moneda en las etiquetas
         fig.update_traces(texttemplate="$%{y:,.2f} ", textposition="outside")
 
-        # Formato de moneda en el eje Y
-        fig.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",", xaxis_title=eje_x, yaxis_title="Ventas ($)")
-        # Corregir formato del eje X cuando se trata de años
-        if eje_x == "AÑO":
-            fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
+        # Formato de moneda en el eje Y y configuración específica para el eje X
+        fig.update_layout(
+            yaxis_tickprefix="$", 
+            yaxis_tickformat=",", 
+            xaxis_title=eje_x, 
+            yaxis_title="Ventas ($)",
+            xaxis=dict(
+                type="category",  # Forzar tipo categoría
+                tickmode="array",  # Modo de ticks personalizado
+                tickvals=df_agrupado[eje_x].tolist()  # Valores exactos para los ticks
+            )
+        )
 
         st.plotly_chart(fig, use_container_width=True)
     
