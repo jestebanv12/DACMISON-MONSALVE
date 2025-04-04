@@ -98,27 +98,29 @@ if pagina == "inicio":
             df_top10 = df[df["AÑO"] == int(año_seleccionado)].groupby("GRUPO TRES").agg({"TOTAL V": "sum"}).reset_index()
         # Crear el gráfico con crecimiento incluido
         fig = px.bar(
-            df_filtrado, 
-            x=eje_x, 
-            y="TOTAL V",
-            text_auto="$,.0f",
-            labels={"TOTAL V": "Total Ventas ($)", eje_x: eje_x},
-            title=titulo_grafica,
-            color="Crecimiento (%)",  # Solo la gráfica lo mostrará
-            color_continuous_scale="Blues"
-        )
+        df_filtrado, 
+        x=eje_x, 
+        y="TOTAL V",
+        text_auto="$,.0f",
+        labels={"TOTAL V": "Total Ventas ($)", eje_x: eje_x},
+        title=titulo_grafica,
+        color="Crecimiento (%)",
+        color_continuous_scale="greens"
+    )
+    fig.update_traces(textposition="outside")
 
-        fig.update_traces(textposition="outside")
+    # Formato de eje X para valores enteros (cuando son años)
+    if eje_x == "AÑO":
+        fig.update_xaxes(tickformat="d", type="category")  # Formato entero y tratarlo como categoría
 
-        # Mostrar gráfico en Streamlit
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Mostrar el top 10 de "GRUPO TRES" SIN crecimiento
-        df_top10 = df_top10.sort_values(by="TOTAL V", ascending=False).head(10)
-        df_top10["TOTAL V"] = df_top10["TOTAL V"].apply(lambda x: f"${x:,.2f}")  # Formatear como moneda
+    # Mostrar el top 10 de "GRUPO TRES" SIN crecimiento
+    df_top10 = df_top10.sort_values(by="TOTAL V", ascending=False).head(10)
+    df_top10["TOTAL V"] = df_top10["TOTAL V"].apply(lambda x: f"${x:,.2f}")  # Formatear como moneda
 
-        st.write(f"### Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-        st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]], hide_index=True) 
+    st.write(f"### Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
+    st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]], hide_index=True) 
     
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
@@ -261,7 +263,7 @@ elif pagina == "Vendedores":
     }),
         hide_index=False,  # Mantener encabezado de "RAZON SOCIAL"
         use_container_width=True  # Ajustar al ancho disponible
-)
+) 
 elif pagina == "clientes":
     st.title("ℹ️ Clientes")
     
@@ -304,8 +306,8 @@ elif pagina == "clientes":
         st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
     
         # Mostrar Gráficos si se selecciona Razón Social
-    if razon_social_seleccionada:
-        st.subheader("📈 Ventas de la Razón Social")
+if razon_social_seleccionada:
+    st.subheader("📈 Ventas de la Razón Social")
 
     if df_filtrado.empty:
         st.warning("No hay datos para mostrar en la gráfica.")
