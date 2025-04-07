@@ -55,22 +55,23 @@ if pagina == "inicio":
     st.title("🏠 Base de datos General")
     st.subheader("Ventas desde el 2022.")
     # Cargar datos desde CSV con limpieza de nombres
+    # Cargar datos desde CSV con limpieza de nombres
     @st.cache_data
     def cargar_datos():
-        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python",index_col=None)  # Detectar separador automáticamente
-        df.columns = df.columns.str.strip()  # Eliminar espacios antes y después en los nombres
-        df.rename(columns=lambda x: x.strip(), inplace=True)  # Asegurar que no haya espacios oculto
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", index_col=None)
+        df.columns = df.columns.str.strip()
+        df.rename(columns=lambda x: x.strip(), inplace=True)
         return df
+
     df = cargar_datos()
-    # Verificar que el CSV tenga las columnas correctas
-    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V","GRUPO TRES",}
+
+    # Verificar columnas
+    columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "GRUPO TRES", "GRUPO CUATRO"}
     if not columnas_requeridas.issubset(set(df.columns)):
         st.error(f"⚠️ El archivo CSV debe contener las columnas: {columnas_requeridas}")
-    else:  
-        # Convertir año a tipo entero para evitar problemas en los filtros
+    else:
         df["AÑO"] = df["AÑO"].astype(int)
 
-         # Seleccionar el año
         años_disponibles = sorted(df["AÑO"].dropna().unique(), reverse=True)
         año_seleccionado = st.selectbox("Selecciona un año:", ["Todos"] + list(map(str, años_disponibles)))
 
@@ -79,14 +80,20 @@ if pagina == "inicio":
             df_filtrado["Crecimiento (%)"] = df_filtrado["TOTAL V"].pct_change() * 100
             df_filtrado["Crecimiento (%)"] = df_filtrado["Crecimiento (%)"].round(2)
             eje_x = "AÑO"
-            titulo_grafica = "Ventas Anuales con Crecimiento (%)" 
-            # Top 10 de GRUPO TRES
-            df_top10 = df.groupby("GRUPO TRES").agg({"TOTAL V": "sum"}).reset_index()
-            
+            titulo_grafica = "Ventas Anuales con Crecimiento (%)"
+
+            top_grupo3 = df.groupby(["GRUPO TRES", "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo3 = top_grupo3.pivot(index="GRUPO TRES", columns="AÑO", values="TOTAL V").fillna(0)
+            top_grupo3 = top_grupo3.assign(TOTAL=top_grupo3.sum(axis=1)).nlargest(10, "TOTAL").drop(columns="TOTAL")
+
+            top_grupo4 = df.groupby(["GRUPO CUATRO", "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo4 = top_grupo4.pivot(index="GRUPO CUATRO", columns="AÑO", values="TOTAL V").fillna(0)
+            top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
+
         else:
-            orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
-                       "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
             df["MES"] = df["MES"].str.upper()
+            orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                       "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
             df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
 
             df_filtrado = df[df["AÑO"] == int(año_seleccionado)].groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
@@ -94,33 +101,59 @@ if pagina == "inicio":
             df_filtrado["Crecimiento (%)"] = df_filtrado["Crecimiento (%)"].round(2)
             titulo_grafica = f"Ventas Mensuales en {año_seleccionado} con Crecimiento (%)"
             eje_x = "MES"
-            # Filtrar y obtener el Top 10 de GRUPO TRES
-            df_top10 = df[df["AÑO"] == int(año_seleccionado)].groupby("GRUPO TRES").agg({"TOTAL V": "sum"}).reset_index()
-        # Crear el gráfico con crecimiento incluido
+
+            df_filtrado_ano = df[df["AÑO"] == int(año_seleccionado)]
+            top_grupo3 = df_filtrado_ano.groupby(["GRUPO TRES", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo3 = top_grupo3.pivot(index="GRUPO TRES", columns="MES", values="TOTAL V").fillna(0)
+            top_grupo3 = top_grupo3.assign(TOTAL=top_grupo3.sum(axis=1)).nlargest(10, "TOTAL").drop(columns="TOTAL")
+
+            top_grupo4 = df_filtrado_ano.groupby(["GRUPO CUATRO", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo4 = top_grupo4.pivot(index="GRUPO CUATRO", columns="MES", values="TOTAL V").fillna(0)
+            top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
+
+        # Gráfico de barras con crecimiento en % dentro de las barras
         fig = px.bar(
-        df_filtrado, 
-        x=eje_x, 
-        y="TOTAL V",
-        text_auto="$,.0f",
-        labels={"TOTAL V": "Total Ventas ($)", eje_x: eje_x},
-        title=titulo_grafica,
-        color="Crecimiento (%)",
-        color_continuous_scale="greens"
-    )
-    fig.update_traces(textposition="outside")
+            df_filtrado,
+            x=eje_x,
+            y="TOTAL V",
+            text=df_filtrado["Crecimiento (%)"].apply(lambda x: f"{x:.2f}%" if pd.notnull(x) else ""),
+            labels={"TOTAL V": "Total Ventas ($)", eje_x: eje_x},
+            title=titulo_grafica,
+            color_discrete_sequence=["#2ecc71"]
+        )
 
-    # Formato de eje X para valores enteros (cuando son años)
-    if eje_x == "AÑO":
-        fig.update_xaxes(tickformat="d", type="category")  # Formato entero y tratarlo como categoría
+        fig.update_traces(
+            textposition="inside",
+            textfont=dict(color="white", size=12)
+        )
 
-    st.plotly_chart(fig, use_container_width=True)
+        fig.update_xaxes(
+            type="category",
+            title_text=eje_x,
+            tickfont=dict(size=12)
+        )
 
-    # Mostrar el top 10 de "GRUPO TRES" SIN crecimiento
-    df_top10 = df_top10.sort_values(by="TOTAL V", ascending=False).head(10)
-    df_top10["TOTAL V"] = df_top10["TOTAL V"].apply(lambda x: f"${x:,.2f}")  # Formatear como moneda
+        # Aquí está el cambio clave: formato en millares
+        fig.update_yaxes(
+            title_text="Total Ventas ($)",
+            tickformat=",.0f"  # <-- Formato en miles con separador de mil
+        )
 
-    st.write(f"### Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-    st.dataframe(df_top10[["GRUPO TRES", "TOTAL V"]], hide_index=True) 
+        fig.update_layout(
+            uniformtext_minsize=8,
+            uniformtext_mode="hide",
+            plot_bgcolor="#f9f9f9",
+            title_font_size=18
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Mostrar los tops
+        st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
+        st.dataframe(top_grupo3.reset_index(), hide_index=True, use_container_width=True)
+
+        st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
+        st.dataframe(top_grupo4.reset_index(), hide_index=True, use_container_width=True)
     
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
@@ -409,36 +442,40 @@ if pagina == "Referencias":
     
             st.plotly_chart(fig, use_container_width=True)
 if pagina == "TPM":
-    # Cargar datos
     @st.cache_data
     def cargar_datos():
         df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
         df.columns = df.columns.str.strip()
         df.rename(columns=lambda x: x.strip(), inplace=True)
 
-        # Convertir nombres de meses a números si es necesario
+        # Eliminar filas duplicadas
+        df = df.drop_duplicates()
+
+        # Diccionario para convertir meses en texto a número
         meses_dict = {
             "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
             "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
         }
 
-        # Normalizar nombres de meses a números si están en texto
+        # Normalizar nombre de los meses
         if df["MES"].dtype == object:
             df["MES"] = df["MES"].str.upper().map(meses_dict)
 
-        # Convertir columnas numéricas correctamente
+        # Convertir años
         df["AÑO"] = df["AÑO"].astype(float).astype(int)
-        df["MES"] = pd.to_numeric(df["MES"], errors="coerce").fillna(0).astype(int)
-        df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce").fillna(0)
-        df["TOTAL C"] = pd.to_numeric(df["TOTAL C"], errors="coerce").fillna(0)
 
-        # Filtrar meses válidos
+        df["TOTAL C"] = df["TOTAL C"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
+        df["TOTAL C"] = pd.to_numeric(df["TOTAL C"], errors="coerce")
+
+        # Asegurarse de que el mes esté entre 1 y 12
+        df["MES"] = pd.to_numeric(df["MES"], errors="coerce").fillna(0).astype(int)
         df = df[df["MES"].between(1, 12)]
 
         return df
 
     df = cargar_datos()
 
+    
     # Verificar columnas
     columnas_requeridas = {"AÑO", "MES", "TOTAL V", "TOTAL C"}
     if not columnas_requeridas.issubset(set(df.columns)):
@@ -491,3 +528,5 @@ if pagina == "TPM":
     )
 
     st.plotly_chart(fig_area, use_container_width=True)
+
+  
