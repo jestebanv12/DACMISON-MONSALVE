@@ -148,12 +148,22 @@ if pagina == "inicio":
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Mostrar los tops
-        st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-        st.dataframe(top_grupo3.reset_index(), hide_index=True, use_container_width=True)
+        # Formatear como moneda los valores numéricos
+    top_grupo3_moneda = top_grupo3.reset_index().copy()
+    top_grupo4_moneda = top_grupo4.reset_index().copy()
 
-        st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
-        st.dataframe(top_grupo4.reset_index(), hide_index=True, use_container_width=True)
+    for col in top_grupo3_moneda.columns[1:]:
+        top_grupo3_moneda[col] = top_grupo3_moneda[col].apply(lambda x: f"${x:,.0f}")
+
+    for col in top_grupo4_moneda.columns[1:]:
+        top_grupo4_moneda[col] = top_grupo4_moneda[col].apply(lambda x: f"${x:,.0f}")
+
+    # Mostrar las tablas ya formateadas
+    st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
+    st.dataframe(top_grupo3_moneda, hide_index=True, use_container_width=True)
+
+    st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
+    st.dataframe(top_grupo4_moneda, hide_index=True, use_container_width=True)
     
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
