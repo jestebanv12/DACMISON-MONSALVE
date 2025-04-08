@@ -9,6 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
+
 st.set_page_config(
     page_title="TPM",
     page_icon="Logo.png",
@@ -55,7 +56,8 @@ if pagina == "inicio":
     st.title("🏠 Base de datos General")
     st.subheader("Ventas desde el 2022.")
     # Cargar datos desde CSV con limpieza de nombres
-    # Cargar datos desde CSV con limpieza de nombres
+    
+
     @st.cache_data
     def cargar_datos():
         df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", index_col=None)
@@ -65,7 +67,6 @@ if pagina == "inicio":
 
     df = cargar_datos()
 
-    # Verificar columnas
     columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "GRUPO TRES", "GRUPO CUATRO"}
     if not columnas_requeridas.issubset(set(df.columns)):
         st.error(f"⚠️ El archivo CSV debe contener las columnas: {columnas_requeridas}")
@@ -111,7 +112,7 @@ if pagina == "inicio":
             top_grupo4 = top_grupo4.pivot(index="GRUPO CUATRO", columns="MES", values="TOTAL V").fillna(0)
             top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
 
-        # Gráfico de barras con crecimiento en % dentro de las barras
+        # Crear gráfico
         fig = px.bar(
             df_filtrado,
             x=eje_x,
@@ -133,10 +134,16 @@ if pagina == "inicio":
             tickfont=dict(size=12)
         )
 
-        # Aquí está el cambio clave: formato en millares
+        # Formato del eje Y: miles en formato "100M"
+        max_y = df_filtrado["TOTAL V"].max()
+        tick_step = 500_000_000 if max_y > 1_000_000_000 else 100_000_000
+        tick_vals = list(range(0, int(max_y + tick_step), int(tick_step)))
+        tick_texts = [f"{int(val/1_000_000)}M" for val in tick_vals]
+
         fig.update_yaxes(
             title_text="Total Ventas ($)",
-            tickformat=",.0f"  # <-- Formato en miles con separador de mil
+            tickvals=tick_vals,
+            ticktext=tick_texts
         )
 
         fig.update_layout(
@@ -148,22 +155,47 @@ if pagina == "inicio":
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Formatear como moneda los valores numéricos
-    top_grupo3_moneda = top_grupo3.reset_index().copy()
-    top_grupo4_moneda = top_grupo4.reset_index().copy()
+        # ---------- Tablas de top formateadas ----------
+        def formatear_tabla_moneda(df_tabla):
+            df_fmt = df_tabla.reset_index().copy()
+            # Renombrar la columna del índice si es necesario
+            if 'index' in df_fmt.columns:
+                df_fmt.rename(columns={'index': 'GRUPO TRES'}, inplace=True)
+    
+            # Formatear valores como moneda
+            for col in df_fmt.columns[1:]:
+                df_fmt[col] = df_fmt[col].apply(lambda x: f"${x:,.0f}")
+    
+            return df_fmt
 
-    for col in top_grupo3_moneda.columns[1:]:
-        top_grupo3_moneda[col] = top_grupo3_moneda[col].apply(lambda x: f"${x:,.0f}")
+        styled_top3 = formatear_tabla_moneda(top_grupo3)
+        styled_top4 = formatear_tabla_moneda(top_grupo4)
 
-    for col in top_grupo4_moneda.columns[1:]:
-        top_grupo4_moneda[col] = top_grupo4_moneda[col].apply(lambda x: f"${x:,.0f}")
+        # CSS personalizado para insertar en la página
+        css = """
+        <style>
+            .dataframe th {
+                text-align: center !important;
+                font-weight: bold !important;
+                background-color: #f0f2f6 !important;
+            }
+            .dataframe td {
+                text-align: right !important;
+            }
+            .dataframe td:first-child {
+                text-align: left !important;
+            }
+        </style>
+        """
 
-    # Mostrar las tablas ya formateadas
-    st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-    st.dataframe(top_grupo3_moneda, hide_index=True, use_container_width=True)
+        # Inyectar CSS personalizado
+        st.markdown(css, unsafe_allow_html=True)
 
-    st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
-    st.dataframe(top_grupo4_moneda, hide_index=True, use_container_width=True)
+        st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
+        st.dataframe(styled_top3, hide_index=True, use_container_width=True)
+
+        st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
+        st.dataframe(styled_top4, hide_index=True, use_container_width=True)
     
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
@@ -203,7 +235,8 @@ elif pagina == "Vendedores":
             else sorted(df["CIUDAD"].dropna().unique().tolist())
         )
         ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + sorted(ciudades_disponibles))
-
+    # Checkbox para excluir a TPM EQUIPOS S.A.S
+    excluir_tpm = st.checkbox("Excluir TPM EQUIPOS S.A.S", value=False)
     df["VENDEDOR"] = df["VENDEDOR"].str.strip()
     df["AÑO"] = pd.to_numeric(df["AÑO"], errors="coerce")
     df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce")
@@ -224,72 +257,97 @@ elif pagina == "Vendedores":
 
     if ciudad_seleccionada != "Todos":
         df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_seleccionada]
+    if excluir_tpm:
+        df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.upper().str.strip() != "TPM EQUIPOS S.A.S"]    
     
-    
-        
-    
-    else:
+    if df_filtrado.empty:
+        st.warning("No hay datos para los filtros seleccionados.")
+
         # Agrupación para la gráfica
-        if vendedor_seleccionado == "Todos" or año_seleccionado == "Todos":
+    if vendedor_seleccionado == "Todos" or año_seleccionado == "Todos":
             df_agrupado = df_filtrado.groupby("AÑO")["TOTAL V"].sum().reset_index()
             eje_x = "AÑO"
             titulo_grafica = "Ventas Totales de la Empresa" if vendedor_seleccionado == "Todos" else f"Ventas de {vendedor_seleccionado} por Año"
-        else:
+    else:
             orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
             df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
             df_agrupado = df_filtrado.groupby("MES")["TOTAL V"].sum().reset_index()
             eje_x = "MES"
             titulo_grafica = f"Ventas de {vendedor_seleccionado} en {año_seleccionado}"
 
-        # Mostrar gráfico
-        # Formatear los valores como moneda
-        df_agrupado["TOTAL V"] = pd.to_numeric(df_agrupado["TOTAL V"], errors="coerce")  # Asegurar que es numérico
+      # Mostrar gráfico
+    # Convertir ventas a millones
+    df_agrupado["TOTAL V (M)"] = df_agrupado["TOTAL V"] / 1_000_000
 
-        fig = px.bar(
-            df_agrupado, 
-            x=eje_x, 
-            y="TOTAL V", 
-            title=titulo_grafica, 
-            text_auto=True,
-            color_discrete_sequence=["#00CED1"]
-)
+    fig = px.bar(
+        df_agrupado,
+        x=eje_x,
+        y="TOTAL V (M)",
+        title=titulo_grafica,
+        text_auto=True,
+        color_discrete_sequence=["#00CED1"]
+    )
 
-        # Formato de moneda en las etiquetas
-        fig.update_traces(texttemplate="$%{y:,.2f} ", textposition="outside")
+    # Formato de texto encima de cada barra
+    fig.update_traces(
+        texttemplate="%{y:.0f}M",  # Texto como "250M"
+        textposition="outside"
+    )
 
-        # Formato de moneda en el eje Y
-        fig.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",", xaxis_title=eje_x, yaxis_title="Ventas ($)")
-        # Corregir formato del eje X cuando se trata de años
-        if eje_x == "AÑO":
-            fig.update_xaxes(type="category")  # Tratar los años como categorías discretas
+    # Eje Y con sufijo fijo en millones
+    fig.update_layout(
+        yaxis_tickformat=",",              # Muestra números normales con coma
+        yaxis_ticksuffix="M",              # Siempre mostrar "M"
+        yaxis_tickprefix="$",              # Agrega símbolo de dólar
+        xaxis_title=eje_x,
+        yaxis_title="Ventas (Millones $)"
+    )
 
-        st.plotly_chart(fig, use_container_width=True)
+    # Eje X como categoría si es por AÑO
+    if eje_x == "AÑO":
+        fig.update_xaxes(type="category")
+
+    st.plotly_chart(fig, use_container_width=True)
 
         # Tablas Top 10
-        col5, col6 = st.columns(2, gap="large")
+   
 
-        def estilo_dataframe(df):
-            return df.style.set_properties(**{
-                "text-align": "left",
-                "white-space": "nowrap"
-            }).format({"TOTAL V": "$ {:,.2f}"})
+    # Determinar si agrupar por AÑO o MES
+    agrupador = "MES" if año_seleccionado != "Todos" else "AÑO"
+    orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+    if agrupador == "MES":
+        df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
 
-        with col5:
-            st.subheader("🏆 Top 10 por Ubicación")
-            if dpto_seleccionado == "Todos":
-                top = df_filtrado.groupby("DPTO")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            else:
-                top = df_filtrado.groupby("CIUDAD")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.dataframe(estilo_dataframe(top), use_container_width=True, hide_index=True)
+    def formato_millones(x):
+        return f"$ {x/1_000_000:,.0f}M"
 
-        with col6:
-            st.subheader("🏆 Top 10 REFERENCIA")
-            top_ref = df_filtrado.groupby("REFERENCIA")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            st.dataframe(estilo_dataframe(top_ref.set_index("REFERENCIA")), use_container_width=True)
+    def mostrar_top_personalizado(df_top, titulo, index_col, top_n=10):
+        df_top["TOTAL"] = df_top.sum(axis=1)
+        df_top = df_top.sort_values("TOTAL", ascending=False).drop(columns="TOTAL").head(top_n)
+        df_top = df_top.applymap(lambda x: formato_millones(x))
+        st.markdown(f"<h3 style='text-align: center;'>{titulo}</h3>", unsafe_allow_html=True)
+        st.dataframe(df_top.reset_index(), use_container_width=True, hide_index=True)
 
-        st.markdown("<h3 style='text-align: center;'>🏆 Top 10 RAZON SOCIAL</h3>", unsafe_allow_html=True)
-        top_razon = df_filtrado.groupby("RAZON SOCIAL")["TOTAL V"].sum().reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-        st.dataframe(estilo_dataframe(top_razon.set_index("RAZON SOCIAL")), use_container_width=True)
+    # Top Ubicación
+    st.subheader("🏆 Top 10 por Ubicación")
+    if dpto_seleccionado == "Todos":
+        top = df_filtrado.groupby(["DPTO", agrupador])["TOTAL V"].sum().reset_index()
+        top = top.pivot(index="DPTO", columns=agrupador, values="TOTAL V").fillna(0)
+        mostrar_top_personalizado(top, "🏙️ Top por Departamento", "DPTO")
+    else:
+        top = df_filtrado.groupby(["CIUDAD", agrupador])["TOTAL V"].sum().reset_index()
+        top = top.pivot(index="CIUDAD", columns=agrupador, values="TOTAL V").fillna(0)
+        mostrar_top_personalizado(top, "🏙️ Top por Ciudad", "CIUDAD")
+
+    # Top Referencia
+    top_ref = df_filtrado.groupby(["REFERENCIA", agrupador])["TOTAL V"].sum().reset_index()
+    top_ref = top_ref.pivot(index="REFERENCIA", columns=agrupador, values="TOTAL V").fillna(0)
+    mostrar_top_personalizado(top_ref, "📦 Top 20 Referencias", "REFERENCIA", top_n=20)
+
+    # Top Razón Social
+    top_razon = df_filtrado.groupby(["RAZON SOCIAL", agrupador])["TOTAL V"].sum().reset_index()
+    top_razon = top_razon.pivot(index="RAZON SOCIAL", columns=agrupador, values="TOTAL V").fillna(0)
+    mostrar_top_personalizado(top_razon, "🏢 Top 10 Razón Social", "RAZON SOCIAL", top_n=10)
 
 elif pagina == "clientes":
     st.title("ℹ️ Clientes")
