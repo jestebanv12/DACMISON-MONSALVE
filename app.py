@@ -156,20 +156,30 @@ if pagina == "inicio":
         st.plotly_chart(fig, use_container_width=True)
 
         # ---------- Tablas de top formateadas ----------
-        def formatear_tabla_moneda(df_tabla):
+        def formatear_tabla_miles(df_tabla):
             df_fmt = df_tabla.reset_index().copy()
-            # Renombrar la columna del índice si es necesario
             if 'index' in df_fmt.columns:
                 df_fmt.rename(columns={'index': 'GRUPO TRES'}, inplace=True)
-    
-            # Formatear valores como moneda
-            for col in df_fmt.columns[1:]:
-                df_fmt[col] = df_fmt[col].apply(lambda x: f"${x:,.0f}")
-    
-            return df_fmt
 
-        styled_top3 = formatear_tabla_moneda(top_grupo3)
-        styled_top4 = formatear_tabla_moneda(top_grupo4)
+            for col in df_fmt.columns[1:]:
+                df_fmt[col] = df_fmt[col].apply(lambda x: f"${x/1_000:,.0f}K")
+
+            return df_fmt
+    
+        def formatear_tabla_miles(df_tabla):
+                df_fmt = df_tabla.reset_index().copy()
+                if 'index' in df_fmt.columns:
+                    df_fmt.rename(columns={'index': 'GRUPO TRES'}, inplace=True)
+
+                for col in df_fmt.columns[1:]:
+                    df_fmt[col] = df_fmt[col].apply(lambda x: f"${x/1_000:,.0f}K")
+
+                return df_fmt
+
+
+        styled_top3 = formatear_tabla_miles(top_grupo3)
+        styled_top4 = formatear_tabla_miles(top_grupo4)
+
 
         # CSS personalizado para insertar en la página
         css = """
@@ -277,12 +287,12 @@ elif pagina == "Vendedores":
 
       # Mostrar gráfico
     # Convertir ventas a millones
-    df_agrupado["TOTAL V (M)"] = df_agrupado["TOTAL V"] / 1_000_000
+    df_agrupado["TOTAL V (K)"] = df_agrupado["TOTAL V"] / 1_000
 
     fig = px.bar(
         df_agrupado,
         x=eje_x,
-        y="TOTAL V (M)",
+        y="TOTAL V (K)",
         title=titulo_grafica,
         text_auto=True,
         color_discrete_sequence=["#00CED1"]
@@ -290,17 +300,18 @@ elif pagina == "Vendedores":
 
     # Formato de texto encima de cada barra
     fig.update_traces(
-        texttemplate="%{y:.0f}M",  # Texto como "250M"
-        textposition="outside"
-    )
+        text=df_agrupado["TOTAL V (K)"].apply(lambda x: f"{x:,.0f}K"),
+        textposition="outside",
+        textfont=dict(size=12)
+)
 
     # Eje Y con sufijo fijo en millones
     fig.update_layout(
         yaxis_tickformat=",",              # Muestra números normales con coma
-        yaxis_ticksuffix="M",              # Siempre mostrar "M"
+        yaxis_ticksuffix="K",              # Siempre mostrar "M"
         yaxis_tickprefix="$",              # Agrega símbolo de dólar
         xaxis_title=eje_x,
-        yaxis_title="Ventas (Millones $)"
+        yaxis_title="Ventas (Miles $)"
     )
 
     # Eje X como categoría si es por AÑO
@@ -318,13 +329,14 @@ elif pagina == "Vendedores":
     if agrupador == "MES":
         df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
 
-    def formato_millones(x):
-        return f"$ {x/1_000_000:,.0f}M"
+    # Formato en miles (K)
+    def formato_miles(x):
+        return f"$ {x / 1_000:,.0f}K"
 
     def mostrar_top_personalizado(df_top, titulo, index_col, top_n=10):
         df_top["TOTAL"] = df_top.sum(axis=1)
         df_top = df_top.sort_values("TOTAL", ascending=False).drop(columns="TOTAL").head(top_n)
-        df_top = df_top.applymap(lambda x: formato_millones(x))
+        df_top = df_top.applymap(lambda x: formato_miles(x))
         st.markdown(f"<h3 style='text-align: center;'>{titulo}</h3>", unsafe_allow_html=True)
         st.dataframe(df_top.reset_index(), use_container_width=True, hide_index=True)
 
@@ -383,14 +395,7 @@ elif pagina == "clientes":
     
         if año_seleccionado != "Todos":
             df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_seleccionado]
-    
-        # Mostrar Top 10 de Referencias
-        st.subheader("🏆 Top 10 REFERENCIA")
-        df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-        df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
-        st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
-    
-        # Mostrar Gráficos si se selecciona Razón Social
+
     if razon_social_seleccionada:
         st.subheader("📈 Ventas de la Razón Social")
 
@@ -402,40 +407,73 @@ elif pagina == "clientes":
             df_grafico["AÑO"] = df_grafico["AÑO"].astype(str)
             x_axis = "AÑO"
         else:
-            # Ordenar meses
             orden_meses = [
-                "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-                "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+            "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+            "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
             ]
-            # Normalizar nombres de meses
             df_filtrado["MES"] = df_filtrado["MES"].str.strip().str.upper()
             df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
 
             df_grafico = df_filtrado.groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
             x_axis = "MES"
 
-        # Verificamos si hay datos reales para graficar
-        if df_grafico["TOTAL V"].sum() == 0:
+        # Convertir TOTAL V a miles
+        df_grafico["TOTAL K"] = df_grafico["TOTAL V"] / 1_000
+
+        if df_grafico["TOTAL K"].sum() == 0:
             st.warning("No hay ventas registradas para esta selección.")
         else:
             fig_bar = px.bar(
                 df_grafico,
                 x=x_axis,
-                y="TOTAL V",
+                y="TOTAL K",
                 title="Ventas por Periodo",
-                text_auto=True,
                 color_discrete_sequence=["green"]
             )
-            fig_bar.update_traces(texttemplate="$%{y:,.2f}", textposition="outside")
-            fig_bar.update_layout(yaxis_tickprefix="$", yaxis_tickformat=",")
-            
 
+            # Eje Y en miles con símbolo $
+            fig_bar.update_layout(
+                yaxis_tickprefix="$",
+                yaxis_ticksuffix="K",
+                yaxis_tickformat=",",
+                xaxis_title=x_axis,
+                yaxis_title="Ventas (Miles $)"
+            )
 
-            # Asegurar que el eje X de los años no tenga valores intermedios
             if x_axis == "AÑO":
-                fig_bar.update_xaxes(type="category")  # Forzar eje X como categórico
+                fig_bar.update_xaxes(type="category")
+
+            st.plotly_chart(fig_bar, use_container_width=True)
+
     
-                st.plotly_chart(fig_bar, use_container_width=True)
+        st.subheader("🏆 Top 20 REFERENCIAS")
+
+        # Determinar si agrupar por AÑO o MES
+        agrupador = "MES" if año_seleccionado != "Todos" else "AÑO"
+
+        # Asegurar orden de los meses si aplica
+        orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+        if agrupador == "MES":
+            df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
+
+        # Agrupar por REFERENCIA y el agrupador dinámico
+        top_ref = df_filtrado.groupby(["REFERENCIA", agrupador])["TOTAL V"].sum().reset_index()
+
+        # Pivotear para mostrar los años/meses como columnas
+        pivot_ref = top_ref.pivot(index="REFERENCIA", columns=agrupador, values="TOTAL V").fillna(0)
+
+        # Calcular total general por REFERENCIA y ordenar
+        pivot_ref["TOTAL"] = pivot_ref.sum(axis=1)
+        pivot_ref = pivot_ref.sort_values("TOTAL", ascending=False).drop(columns="TOTAL").head(20)
+
+        # Formato en miles (K)
+        def formato_miles(x):
+            return f"$ {x / 1_000:,.0f}K"
+
+        pivot_ref = pivot_ref.applymap(formato_miles)
+
+        # Mostrar tabla
+        st.dataframe(pivot_ref.reset_index(), use_container_width=True, hide_index=True)
 
 
 if pagina == "Referencias":
@@ -455,60 +493,108 @@ if pagina == "Referencias":
     if not columnas_requeridas.issubset(set(df.columns)):
         st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
     else:
-        st.subheader("📊 Informe de Ventas", divider="blue")
-    
-        col1, col2, col3 = st.columns([2,2,1])
+        # Segmentador obligatorio: Referencia
+        referencias = df["REFERENCIA"].dropna().unique()
+        referencia_seleccionada = st.selectbox("🔍 Seleccione una Referencia (obligatorio):", [""] + sorted(referencias))
+
+    if referencia_seleccionada:
+        # Filtros adicionales
+        # Segmentadores
+        col1, col2, col3, col4 = st.columns(4)
+
         with col1:
-            referencia_seleccionada = st.selectbox("Buscar Referencia", [""] + sorted(df["REFERENCIA"].unique()), index=0)
+            departamentos = df["DPTO"].dropna().unique()
+            dpto_seleccionado = st.selectbox("📍 Departamento", ["Todos"] + sorted(departamentos))
+
         with col2:
-            razon_social_seleccionada = st.selectbox("Buscar Razón Social", [""] + sorted(df["RAZON SOCIAL"].unique()), index=0)
+            if dpto_seleccionado != "Todos":
+                ciudades = df[df["DPTO"] == dpto_seleccionado]["CIUDAD"].dropna().unique()
+            else:
+                ciudades = df["CIUDAD"].dropna().unique()
+            ciudad_seleccionada = st.selectbox("🏙️ Ciudad", ["Todos"] + sorted(ciudades))
+
         with col3:
-            año_seleccionado = st.selectbox("Año", ["Todos"] + sorted(df["AÑO"].astype(int).unique()))
-    
-        # Filtrar datos según selección
-        df_filtrado = df.copy()
-    
-        if referencia_seleccionada:
-            df_filtrado = df_filtrado[df_filtrado["REFERENCIA"].str.contains(referencia_seleccionada, case=False, na=False)]
-    
-        if razon_social_seleccionada:
-            df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.contains(razon_social_seleccionada, case=False, na=False)]
-    
-        if año_seleccionado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["AÑO"].astype(int) == int(año_seleccionado)]
-    
-        # Si se selecciona una referencia y un año, mostrar tabla
-        if referencia_seleccionada and año_seleccionado != "Todos":
-            st.subheader("📊 Ventas de la Referencia en el Año")
-            df_ref_año = df_filtrado.groupby(["AÑO", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
-            df_ref_año["TOTAL V"] = df_ref_año["TOTAL V"].apply(lambda x: f"${x:,.2f}")
-            st.dataframe(df_ref_año, use_container_width=True)
-    
-        # Si no se selecciona referencia, mostrar Top 10
-        else:
-            st.subheader("🏆 Top 10 REFERENCIA")
-            df_top_referencia = df_filtrado.groupby("REFERENCIA").agg({"TOTAL V": "sum"}).reset_index().sort_values(by="TOTAL V", ascending=False).head(10)
-            df_top_referencia["TOTAL V"] = df_top_referencia["TOTAL V"].apply(lambda x: f"${x:,.2f}")
-            st.dataframe(df_top_referencia.set_index("REFERENCIA"), use_container_width=True)
-    
-        # Mostrar gráficos si se selecciona Razón Social
-        if razon_social_seleccionada:
-            st.subheader("📊 Ventas de la Razón Social")
-            df_filtrado["AÑO"] = df_filtrado["AÑO"].astype(int)
-            df_grafico = df_filtrado.groupby("AÑO" if año_seleccionado == "Todos" else "MES").agg({"TOTAL V": "sum"}).reset_index()
-            x_axis = "AÑO" if año_seleccionado == "Todos" else "MES"
-    
-            # Convert to string to treat as category
-            df_grafico[x_axis] = df_grafico[x_axis].astype(str)
-    
-            fig = px.bar(df_grafico, x=x_axis, y="TOTAL V", color_discrete_sequence=['#5F9EA0'])
-    
-            # Force categorical axis
-            fig.update_xaxes(type='category')
-            
+            vendedores = df["VENDEDOR"].dropna().unique()
+            vendedor_seleccionado = st.selectbox("🧑‍💼 Vendedor", ["Todos"] + sorted(vendedores))
+
+        with col4:
+            # Filtro de año fuera de las columnas para tenerlo aparte
+            años = df["AÑO"].dropna().astype(int).unique()
+            año_seleccionado = st.selectbox("📅 Año", ["Todos"] + sorted(años))
+
+        razon_social_seleccionada = st.selectbox(
+            "🏢 Buscar Razón Social",
+            options=["Todos"] + sorted(df["RAZON SOCIAL"].dropna().unique()),
+            index=0,
+            placeholder="Escribe para buscar..."
+)
 
     
+        # Filtrado inicial por referencia
+        df_filtrado = df[df["REFERENCIA"] == referencia_seleccionada].copy()
+
+        # Aplicar segmentaciones adicionales
+        if dpto_seleccionado != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["DPTO"] == dpto_seleccionado]
+
+        if ciudad_seleccionada != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_seleccionada]
+
+        if vendedor_seleccionado != "Todos":
+            if ciudad_seleccionada != "Todos" and vendedor_seleccionado not in df_filtrado["VENDEDOR"].unique():
+                st.warning("❌ El vendedor seleccionado no tiene registros en la ciudad seleccionada.")
+            else:
+                df_filtrado = df_filtrado[df_filtrado["VENDEDOR"] == vendedor_seleccionado]
+
+        if razon_social_seleccionada != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"] == razon_social_seleccionada]
+
+        if año_seleccionado != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["AÑO"].astype(int) == int(año_seleccionado)]
+
+        if df_filtrado.empty:
+            st.warning("⚠️ No hay datos disponibles para los filtros seleccionados.")
+        else:
+            # Crear columna de ventas en miles
+            df_filtrado["VENTAS_K"] = df_filtrado["TOTAL V"] / 1_000
+
+            # Determinar eje x
+            eje_x = "AÑO" if año_seleccionado == "Todos" else "MES"
+
+            # Gráfico de barras
+            df_grafico = df_filtrado.groupby(eje_x).agg({"VENTAS_K": "sum"}).reset_index()
+            df_grafico[eje_x] = df_grafico[eje_x].astype(str)
+
+            fig = px.bar(
+                df_grafico,
+                x=eje_x,
+                y="VENTAS_K",
+                text_auto=True,
+                labels={"VENTAS_K": "Ventas (K)", eje_x: eje_x},
+                color_discrete_sequence=["#2ecc71"],
+                title=f"📈 Ventas de '{referencia_seleccionada}' por {eje_x}"
+            )
+
+            fig.update_traces(texttemplate="%{y:,.0f}K", textposition="outside")
+            fig.update_layout(yaxis_title="Ventas (Miles $)", xaxis_title=eje_x)
+            # Eje X como categoría si es por AÑO
+            if eje_x == "AÑO":
+                fig.update_xaxes(type="category")
             st.plotly_chart(fig, use_container_width=True)
+
+            # Tabla top con ventas y cantidad por eje
+            st.subheader(f"🏆 Top por {eje_x} - Ventas y Cantidad")
+            df_top = df_filtrado.groupby(eje_x).agg({"TOTAL V": "sum", "CANT": "sum"}).reset_index()
+            df_top["TOTAL V"] = df_top["TOTAL V"].apply(lambda x: f"${x/1_000:,.0f}K")
+            df_top["CANT"] = df_top["CANT"].astype(int)
+            st.dataframe(df_top, hide_index=True, use_container_width=True)
+            
+             
+    else:
+            st.warning("⚠️ Por favor seleccione una Referencia para ver información.")
+
+
+        
 if pagina == "TPM":
     @st.cache_data
     def cargar_datos():
