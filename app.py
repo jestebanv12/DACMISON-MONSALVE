@@ -35,7 +35,9 @@ def generar_menu():
         "👩‍🏭 Vendedores": "Vendedores",
         "ℹ️ Cliente": "clientes",
         "⚙️ Referencias":"Referencias",
+        "🗺️ Geolocalización":"Geolocalización",
         "💯TPM":"TPM"
+        
     }
 
     # Crear botones en la barra lateral
@@ -308,7 +310,7 @@ elif pagina == "Vendedores":
     # Eje Y con sufijo fijo en millones
     fig.update_layout(
         yaxis_tickformat=",",              # Muestra números normales con coma
-        yaxis_ticksuffix="K",              # Siempre mostrar "M"
+        yaxis_ticksuffix="",              # Siempre mostrar "M"
         yaxis_tickprefix="$",              # Agrega símbolo de dólar
         xaxis_title=eje_x,
         yaxis_title="Ventas (Miles $)"
@@ -434,7 +436,7 @@ elif pagina == "clientes":
             # Eje Y en miles con símbolo $
             fig_bar.update_layout(
                 yaxis_tickprefix="$",
-                yaxis_ticksuffix="K",
+                yaxis_ticksuffix="",
                 yaxis_tickformat=",",
                 xaxis_title=x_axis,
                 yaxis_title="Ventas (Miles $)"
@@ -468,7 +470,7 @@ elif pagina == "clientes":
 
         # Formato en miles (K)
         def formato_miles(x):
-            return f"$ {x / 1_000:,.0f}K"
+            return f"$ {x / 1_000:,.0f}"
 
         pivot_ref = pivot_ref.applymap(formato_miles)
 
@@ -594,7 +596,120 @@ if pagina == "Referencias":
             st.warning("⚠️ Por favor seleccione una Referencia para ver información.")
 
 
-        
+
+if pagina == "Geolocalización":
+    # Cargar los datos
+    import pydeck as pdk
+    import numpy as np  # Añadida la importación de NumPy
+    from streamlit_folium import folium_static
+    import folium
+    from folium.plugins import HeatMap
+    
+    # Cargar datos
+    @st.cache_data
+    def cargar_datos():
+        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
+        df.columns = df.columns.str.upper().str.strip()
+        return df
+
+    @st.cache_data
+    def cargar_geo():
+        df_geo = pd.read_csv("geolocalizacion.csv", sep=";")
+        df_geo.columns = df_geo.columns.str.upper().str.strip()
+        df_geo["LATITUD"] = pd.to_numeric(df_geo["LATITUD"].astype(str).str.replace(',', '.'), errors="coerce")
+        df_geo["LONGITUD"] = pd.to_numeric(df_geo["LONGITUD"].astype(str).str.replace(',', '.'), errors="coerce")
+        return df_geo.dropna(subset=["LATITUD", "LONGITUD"])
+
+    df = cargar_datos()
+    df_geo = cargar_geo()
+    df = df.merge(df_geo, how="left", on="CIUDAD")
+
+    # ----------------- FILTROS EN PANTALLA PRINCIPAL -----------------
+    st.subheader("📍 Segmentación del Mapa de Ventas")
+
+    col1, col2, col3 = st.columns(3)
+    col4, col5 = st.columns(2)
+
+    año_sel = col1.selectbox("Año", ["Todos"] + sorted(df["AÑO"].dropna().unique()))
+    vendedor_sel = col2.selectbox("Vendedor", ["Todos"] + sorted(df["VENDEDOR"].dropna().unique()))
+    referencia_sel = col3.selectbox("Referencia", ["Todos"] + sorted(df["REFERENCIA"].dropna().unique()))
+    gr3_sel = col4.selectbox("Grupo Tres", ["Todos"] + sorted(df["GRUPO TRES"].dropna().unique()))
+    gr4_sel = col5.selectbox("Grupo Cuatro", ["Todos"] + sorted(df["GRUPO CUATRO"].dropna().unique()))
+
+    # ----------------- APLICAR FILTROS -----------------
+    df_filtrado = df.copy()
+    if año_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_sel]
+    if vendedor_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["VENDEDOR"] == vendedor_sel]
+    if referencia_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["REFERENCIA"] == referencia_sel]
+    if gr3_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["GRUPO TRES"] == gr3_sel]
+    if gr4_sel != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["GRUPO CUATRO"] == gr4_sel]
+
+    # ----------------- MAPA -----------------
+    if "LATITUD" in df_filtrado.columns and "LONGITUD" in df_filtrado.columns and not df_filtrado[["LATITUD", "LONGITUD"]].dropna().empty:
+        df_mapa = df_filtrado.dropna(subset=["LATITUD", "LONGITUD"])
+        df_mapa = df_mapa.groupby(["CIUDAD", "LATITUD", "LONGITUD"]).agg({
+            "TOTAL V": "sum",
+            "CANT": "sum"
+        }).reset_index()
+
+        df_mapa["TOTAL V"] = pd.to_numeric(df_mapa["TOTAL V"], errors="coerce")
+        df_mapa["CANT"] = pd.to_numeric(df_mapa["CANT"], errors="coerce")
+
+        if not df_mapa.empty:
+            st.subheader("🗺️ Mapa de Ventas por Ciudad")
+            total_ventas = df_mapa["TOTAL V"].sum()
+            df_mapa["PORCENTAJE"] = (df_mapa["TOTAL V"] / total_ventas * 100).round(2)
+
+            m = folium.Map(
+                location=[df_mapa["LATITUD"].mean(), df_mapa["LONGITUD"].mean()],
+                zoom_start=6,
+                tiles='CartoDB positron'
+            )
+
+            for _, row in df_mapa.iterrows():
+                radio = min(35, max(8, np.sqrt(row["PORCENTAJE"]) * 5))
+                color = '#e74c3c' if row["PORCENTAJE"] > 10 else '#f39c12' if row["PORCENTAJE"] > 5 else '#3498db'
+
+                popup_html = f"""
+                <div style="font-family: Arial; width: 200px;">
+                    <h4>{row['CIUDAD']}</h4>
+                    <p><b>Ventas:</b> ${row['TOTAL V']:,.2f}</p>
+                    <p><b>% del Total:</b> {row['PORCENTAJE']}%</p>
+                    <p><b>Cantidad:</b> {row['CANT']}</p>
+                </div>
+                """
+
+                folium.CircleMarker(
+                    location=[row["LATITUD"], row["LONGITUD"]],
+                    radius=radio,
+                    popup=folium.Popup(popup_html, max_width=300),
+                    tooltip=f"{row['CIUDAD']}: {row['PORCENTAJE']}%",
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.7,
+                    weight=2
+                ).add_to(m)
+
+            folium_static(m)
+
+            st.markdown("""
+            ### 🎯 Interpretación del Mapa:
+            - 🔴 Rojo: Más del **10%** de ventas
+            - 🟠 Naranja: Entre **5% y 10%**
+            - 🔵 Azul: Menos del **5%**
+            """)
+        else:
+            st.warning("⚠️ No hay datos válidos para mostrar en el mapa después de aplicar los filtros.")
+    else:
+        st.warning("⚠️ No se encontraron columnas de LATITUD y LONGITUD válidas.")
+
+
 if pagina == "TPM":
     @st.cache_data
     def cargar_datos():
@@ -602,26 +717,22 @@ if pagina == "TPM":
         df.columns = df.columns.str.strip()
         df.rename(columns=lambda x: x.strip(), inplace=True)
 
-        # Eliminar filas duplicadas
         df = df.drop_duplicates()
 
-        # Diccionario para convertir meses en texto a número
+        # Diccionario para convertir meses
         meses_dict = {
             "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
             "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
         }
 
-        # Normalizar nombre de los meses
         if df["MES"].dtype == object:
             df["MES"] = df["MES"].str.upper().map(meses_dict)
 
-        # Convertir años
         df["AÑO"] = df["AÑO"].astype(float).astype(int)
 
         df["TOTAL C"] = df["TOTAL C"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
         df["TOTAL C"] = pd.to_numeric(df["TOTAL C"], errors="coerce")
 
-        # Asegurarse de que el mes esté entre 1 y 12
         df["MES"] = pd.to_numeric(df["MES"], errors="coerce").fillna(0).astype(int)
         df = df[df["MES"].between(1, 12)]
 
@@ -629,58 +740,79 @@ if pagina == "TPM":
 
     df = cargar_datos()
 
-    
-    # Verificar columnas
+    # Verificar columnas requeridas
     columnas_requeridas = {"AÑO", "MES", "TOTAL V", "TOTAL C"}
     if not columnas_requeridas.issubset(set(df.columns)):
         st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
     else:
         st.subheader("📊 Ventas y Costos Totales", divider="blue")
 
-        # Selector de año
-        opciones_año = ["Todos"] + sorted(df["AÑO"].unique())
-        año_seleccionado = st.selectbox("Seleccione un año", opciones_año)
+        # Segmentadores
+        col1, col2, col3, col4 = st.columns(4)
+        año_sel = col1.selectbox("Año", ["Todos"] + sorted(df["AÑO"].unique()))
+        ref_sel = col2.selectbox("Referencia", ["Todos"] + sorted(df["REFERENCIA"].dropna().unique()))
+        dep_sel = col3.selectbox("Departamento", ["Todos"] + sorted(df["DPTO"].dropna().unique()))
+        ciudad_sel = col4.selectbox("Ciudad", ["Todos"] + sorted(df["CIUDAD"].dropna().unique()))
 
-        # Filtrar datos
-        df_filtrado = df if año_seleccionado == "Todos" else df[df["AÑO"] == int(año_seleccionado)]
+        col5, col6, col7 = st.columns(3)
+        g2_sel = col5.selectbox("Grupo 2", ["Todos"] + sorted(df["GRUPO DOS"].dropna().unique()))
+        g3_sel = col6.selectbox("Grupo 3", ["Todos"] + sorted(df["GRUPO TRES"].dropna().unique()))
+        g4_sel = col7.selectbox("Grupo 4", ["Todos"] + sorted(df["GRUPO CUATRO"].dropna().unique()))
 
-        # Verificar si hay datos después del filtrado
+        # Aplicar filtros
+        df_filtrado = df.copy()
+        if año_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["AÑO"] == int(año_sel)]
+        if ref_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["REFERENCIA"] == ref_sel]
+        if dep_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["DPTO"] == dep_sel]
+        if ciudad_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_sel]
+        if g2_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["GRUPO DOS"] == g2_sel]
+        if g3_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["GRUPO TRES"] == g3_sel]
+        if g4_sel != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["GRUPO CUATRO"] == g4_sel]
+
         if df_filtrado.empty:
-            st.warning("No hay datos disponibles para esta selección.")
+            st.warning("⚠️ No hay datos disponibles para esta combinación de filtros.")
         else:
-            # Mapear meses de números a nombres
+            # Mapear meses
             meses_map = {
                 1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
                 7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-        }
+            }
             df_filtrado["MES"] = df_filtrado["MES"].map(meses_map)
 
-            # Agrupar datos
-            x_axis = "AÑO" if año_seleccionado == "Todos" else "MES"
+            # Agrupación
+            x_axis = "AÑO" if año_sel == "Todos" else "MES"
             df_grafico = df_filtrado.groupby(x_axis).agg({"TOTAL V": "sum", "TOTAL C": "sum"}).reset_index()
 
-            # Ordenar los meses correctamente si se elige un solo año
+            # Ordenar meses
             if x_axis == "MES":
                 df_grafico["MES"] = pd.Categorical(df_grafico["MES"], categories=meses_map.values(), ordered=True)
                 df_grafico = df_grafico.sort_values("MES")
 
-            # Gráfico de áreas con ventas por encima de costos
-        # Gráfico de áreas
-    # Gráfico de áreas con orden corregido (ventas encima de costos)
-    fig_area = px.area(df_grafico, x=x_axis, y=["TOTAL C", "TOTAL V"],  # Invertimos el orden
-                   title="Ventas y Costos Totales", labels={"value": "Monto ($)"},
-                   color_discrete_sequence=["#ff7f0e", "#1f77b4"])  # Colores personalizados
+            # Gráfico de áreas
+            # Escalar valores a miles
+            df_grafico["TOTAL V"] = df_grafico["TOTAL V"] / 1000
+            df_grafico["TOTAL C"] = df_grafico["TOTAL C"] / 1000
 
-    # Forzar años enteros en el eje X
-    fig_area.update_xaxes(tickmode="array", tickvals=df_grafico[x_axis].unique(), tickformat=".0f")
-    # Formatear el eje Y para mostrar valores en millones con "M"
-    fig_area.update_layout(
-    yaxis=dict(
-        tickformat=",.0f",  # Formato de número entero sin decimales
-        title="Monto ($ Millones)"  # Etiqueta del eje Y
-    )
-    )
+            # Gráfico de áreas
+            fig_area = px.area(df_grafico, x=x_axis, y=["TOTAL C", "TOTAL V"],
+                            title="Ventas y Costos Totales", labels={"value": "Monto ($ Miles)"},
+                            color_discrete_sequence=["#5F9EA0","#006400"])
 
-    st.plotly_chart(fig_area, use_container_width=True)
+            fig_area.update_xaxes(tickmode="array", tickvals=df_grafico[x_axis].unique(), tickformat=".0f")
+            fig_area.update_layout(
+                yaxis=dict(
+                    tickformat=",.0f",
+                    title="Monto ($ Miles)"
+                )
+            )
 
-  
+            st.plotly_chart(fig_area, use_container_width=True)
+
+    
