@@ -10,6 +10,5 @@ pydeck
 streamlit-folium
 folium
 numpy
-BytesIO
 io
 xlsxwriter
