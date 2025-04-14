@@ -7,6 +7,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import seaborn as sns
 import matplotlib.pyplot as plt
+from io import BytesIO 
+import io
+import xlsxwriter 
 
 
 
@@ -382,19 +385,19 @@ elif pagina == "clientes":
         st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
     else:
         st.subheader("📊 Informe de Ventas", divider="blue")
-    
-        col1, col2 = st.columns([2,1])
+
+        col1, col2 = st.columns([2, 1])
         with col1:
             razon_social_seleccionada = st.selectbox("Buscar Razón Social", [""] + sorted(df["RAZON SOCIAL"].unique()), index=0)
         with col2:
             año_seleccionado = st.selectbox("Año", ["Todos"] + sorted(df["AÑO"].unique()))
-    
+
         # Filtrar datos según selección
         df_filtrado = df.copy()
-    
+
         if razon_social_seleccionada:
             df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.contains(razon_social_seleccionada, case=False, na=False)]
-    
+
         if año_seleccionado != "Todos":
             df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_seleccionado]
 
@@ -410,8 +413,8 @@ elif pagina == "clientes":
             x_axis = "AÑO"
         else:
             orden_meses = [
-            "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-            "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
+                "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"
             ]
             df_filtrado["MES"] = df_filtrado["MES"].str.strip().str.upper()
             df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
@@ -447,7 +450,6 @@ elif pagina == "clientes":
 
             st.plotly_chart(fig_bar, use_container_width=True)
 
-    
         st.subheader("🏆 Top 20 REFERENCIAS")
 
         # Determinar si agrupar por AÑO o MES
@@ -468,14 +470,98 @@ elif pagina == "clientes":
         pivot_ref["TOTAL"] = pivot_ref.sum(axis=1)
         pivot_ref = pivot_ref.sort_values("TOTAL", ascending=False).drop(columns="TOTAL").head(20)
 
-        # Formato en miles (K)
+        # 👉 Formatear a miles (texto)
+        # 👉 Formatear a miles (texto)
         def formato_miles(x):
             return f"$ {x / 1_000:,.0f}"
 
-        pivot_ref = pivot_ref.applymap(formato_miles)
+        pivot_ref_formateado = pivot_ref.applymap(formato_miles)
 
-        # Mostrar tabla
-        st.dataframe(pivot_ref.reset_index(), use_container_width=True, hide_index=True)
+        # 👉 Función para resaltar en rojo los valores "$ 0"
+        def resaltar_ceros(val):
+            return 'color: red' if val == "$ 0" else ''
+
+        # 👉 Aplicar estilo
+        pivot_ref_estilado = pivot_ref_formateado.reset_index().style.applymap(resaltar_ceros)
+
+        # 👉 Mostrar tabla estilizada sin índice
+        st.dataframe(pivot_ref_estilado, use_container_width=True, hide_index=True)
+
+        # Crear archivo Excel en memoria
+        # Crear archivos Excel en memoria
+        excel_buffer = io.BytesIO()
+        excel_buffer_completo = io.BytesIO()
+
+        # Guardar el Top 20 Referencias como tabla formateada
+        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+            df_excel = pivot_ref.reset_index()
+            df_excel.to_excel(writer, sheet_name="Top Referencias", index=False)
+            
+            # Dar formato de tabla
+            workbook = writer.book
+            worksheet = writer.sheets["Top Referencias"]
+            
+            # Crear un formato para encabezados
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'top',
+                'fg_color': '#D7E4BC',
+                'border': 1
+            })
+            
+            # Aplicar formato de encabezado
+            for col_num, value in enumerate(df_excel.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Auto-ajustar ancho de columnas
+            for i, col in enumerate(df_excel.columns):
+                column_width = max(df_excel[col].astype(str).map(len).max(), len(col)) + 2
+                worksheet.set_column(i, i, column_width)
+
+        # Guardar el dataframe completo como tabla formateada
+        with pd.ExcelWriter(excel_buffer_completo, engine='xlsxwriter') as writer:
+            df_filtrado.to_excel(writer, sheet_name="Datos Completos", index=False)
+            
+            # Dar formato de tabla
+            workbook = writer.book
+            worksheet = writer.sheets["Datos Completos"]
+            
+            # Crear un formato para encabezados
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'top',
+                'fg_color': '#D7E4BC',
+                'border': 1
+            })
+            
+            # Aplicar formato de encabezado
+            for col_num, value in enumerate(df_filtrado.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+            
+            # Auto-ajustar ancho de columnas
+            for i, col in enumerate(df_filtrado.columns):
+                column_width = max(df_filtrado[col].astype(str).map(len).max(), len(col)) + 2
+                worksheet.set_column(i, i, column_width)
+
+        # Mostrar ambos botones uno al lado del otro
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Descargar Top 20 Referencias",
+                data=excel_buffer.getvalue(),
+                file_name="top_20_referencias.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        with col2:
+            st.download_button(
+                label="📥 Descargar Datos Completos",
+                data=excel_buffer_completo.getvalue(),
+                file_name="dataframe_completos.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_full_df"
+            )
 
 
 if pagina == "Referencias":
@@ -490,18 +576,14 @@ if pagina == "Referencias":
 
     df = cargar_datos()
 
-    # Verificar que el archivo CSV tenga las columnas correctas
     columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "RAZON SOCIAL", "REFERENCIA"}
     if not columnas_requeridas.issubset(set(df.columns)):
         st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
     else:
-        # Segmentador obligatorio: Referencia
         referencias = df["REFERENCIA"].dropna().unique()
         referencia_seleccionada = st.selectbox("🔍 Seleccione una Referencia (obligatorio):", [""] + sorted(referencias))
 
     if referencia_seleccionada:
-        # Filtros adicionales
-        # Segmentadores
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
@@ -520,7 +602,6 @@ if pagina == "Referencias":
             vendedor_seleccionado = st.selectbox("🧑‍💼 Vendedor", ["Todos"] + sorted(vendedores))
 
         with col4:
-            # Filtro de año fuera de las columnas para tenerlo aparte
             años = df["AÑO"].dropna().astype(int).unique()
             año_seleccionado = st.selectbox("📅 Año", ["Todos"] + sorted(años))
 
@@ -529,13 +610,10 @@ if pagina == "Referencias":
             options=["Todos"] + sorted(df["RAZON SOCIAL"].dropna().unique()),
             index=0,
             placeholder="Escribe para buscar..."
-)
+        )
 
-    
-        # Filtrado inicial por referencia
         df_filtrado = df[df["REFERENCIA"] == referencia_seleccionada].copy()
 
-        # Aplicar segmentaciones adicionales
         if dpto_seleccionado != "Todos":
             df_filtrado = df_filtrado[df_filtrado["DPTO"] == dpto_seleccionado]
 
@@ -557,13 +635,9 @@ if pagina == "Referencias":
         if df_filtrado.empty:
             st.warning("⚠️ No hay datos disponibles para los filtros seleccionados.")
         else:
-            # Crear columna de ventas en miles
             df_filtrado["VENTAS_K"] = df_filtrado["TOTAL V"] / 1_000
-
-            # Determinar eje x
             eje_x = "AÑO" if año_seleccionado == "Todos" else "MES"
 
-            # Gráfico de barras
             df_grafico = df_filtrado.groupby(eje_x).agg({"VENTAS_K": "sum"}).reset_index()
             df_grafico[eje_x] = df_grafico[eje_x].astype(str)
 
@@ -579,21 +653,75 @@ if pagina == "Referencias":
 
             fig.update_traces(texttemplate="%{y:,.0f}K", textposition="outside")
             fig.update_layout(yaxis_title="Ventas (Miles $)", xaxis_title=eje_x)
-            # Eje X como categoría si es por AÑO
             if eje_x == "AÑO":
                 fig.update_xaxes(type="category")
+
             st.plotly_chart(fig, use_container_width=True)
 
-            # Tabla top con ventas y cantidad por eje
             st.subheader(f"🏆 Top por {eje_x} - Ventas y Cantidad")
             df_top = df_filtrado.groupby(eje_x).agg({"TOTAL V": "sum", "CANT": "sum"}).reset_index()
             df_top["TOTAL V"] = df_top["TOTAL V"].apply(lambda x: f"${x/1_000:,.0f}K")
             df_top["CANT"] = df_top["CANT"].astype(int)
             st.dataframe(df_top, hide_index=True, use_container_width=True)
-            
-             
+
+            def generar_excel(df_exportar):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df_exportar.to_excel(writer, index=False, sheet_name="Datos")
+                    workbook = writer.book
+                    worksheet = writer.sheets["Datos"]
+                    (max_row, max_col) = df_exportar.shape
+                    column_settings = [{"header": col} for col in df_exportar.columns]
+                    worksheet.add_table(0, 0, max_row, max_col - 1, {
+                        "columns": column_settings,
+                        "style": "Table Style Medium 9",
+                        "name": "TablaDatos"
+                    })
+                output.seek(0)
+                return output
+
+            st.download_button(
+                label="📥 Descargar Top por Año/Mes",
+                data=generar_excel(df_top),
+                file_name=f"Top_{eje_x}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.divider()
+
+            st.subheader("📌 Top 20 por Vendedor, Departamento, Ciudad y Cliente")
+
+            def mostrar_top_con_descarga(columna, titulo, nombre_archivo):
+                top_df = df_filtrado.groupby(columna).agg({"TOTAL V": "sum", "CANT": "sum"}).reset_index()
+                top_df = top_df.sort_values("TOTAL V", ascending=False).head(20)
+                top_df["TOTAL V"] = top_df["TOTAL V"].apply(lambda x: f"${x/1_000:,.0f}K")
+
+                st.markdown(f"**🔹 {titulo}**")
+                st.dataframe(top_df, hide_index=True, use_container_width=True)
+
+                coln, colm = st.columns(2)
+                with coln:
+                    st.download_button(
+                        label=f"📥 Descargar Top",
+                        data=generar_excel(top_df),
+                        file_name=f"{nombre_archivo}_Top20.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                with colm:
+                    st.download_button(
+                        label=f"📦 Descargar Todo",
+                        data=generar_excel(df_filtrado),
+                        file_name=f"{nombre_archivo}_Todo.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+            mostrar_top_con_descarga("VENDEDOR", "Top Vendedores", "Top_Vendedores")
+            mostrar_top_con_descarga("DPTO", "Top Departamentos", "Top_Departamentos")
+            mostrar_top_con_descarga("CIUDAD", "Top Ciudades", "Top_Ciudades")
+            mostrar_top_con_descarga("RAZON SOCIAL", "Top Clientes", "Top_Clientes")
+
     else:
-            st.warning("⚠️ Por favor seleccione una Referencia para ver información.")
+        st.warning("⚠️ Por favor seleccione una Referencia para ver información.")
 
 
 
