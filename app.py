@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import seaborn as sns
 import matplotlib.pyplot as plt
-from io import BytesIO 
+from io import BytesIO
 import io
 import xlsxwriter 
 
@@ -61,14 +61,21 @@ if pagina == "inicio":
     st.title("🏠 Base de datos General")
     st.subheader("Ventas desde el 2022.")
     # Cargar datos desde CSV con limpieza de nombres
-    
-
     @st.cache_data
     def cargar_datos():
         df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", index_col=None)
         df.columns = df.columns.str.strip()
         df.rename(columns=lambda x: x.strip(), inplace=True)
         return df
+
+    def formato_miles(x):
+        return f"${x/1_000:,.0f}K"
+
+    def generar_excel(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, sheet_name="Top", index=False)
+        return output.getvalue()
 
     df = cargar_datos()
 
@@ -77,7 +84,6 @@ if pagina == "inicio":
         st.error(f"⚠️ El archivo CSV debe contener las columnas: {columnas_requeridas}")
     else:
         df["AÑO"] = df["AÑO"].astype(int)
-
         años_disponibles = sorted(df["AÑO"].dropna().unique(), reverse=True)
         año_seleccionado = st.selectbox("Selecciona un año:", ["Todos"] + list(map(str, años_disponibles)))
 
@@ -99,7 +105,7 @@ if pagina == "inicio":
         else:
             df["MES"] = df["MES"].str.upper()
             orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-                       "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+                            "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
             df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
 
             df_filtrado = df[df["AÑO"] == int(año_seleccionado)].groupby("MES").agg({"TOTAL V": "sum"}).reset_index()
@@ -127,91 +133,52 @@ if pagina == "inicio":
             title=titulo_grafica,
             color_discrete_sequence=["#2ecc71"]
         )
+        fig.update_traces(textposition="inside", textfont=dict(color="white", size=12))
+        fig.update_xaxes(type="category", title_text=eje_x, tickfont=dict(size=12))
 
-        fig.update_traces(
-            textposition="inside",
-            textfont=dict(color="white", size=12)
-        )
-
-        fig.update_xaxes(
-            type="category",
-            title_text=eje_x,
-            tickfont=dict(size=12)
-        )
-
-        # Formato del eje Y: miles en formato "100M"
         max_y = df_filtrado["TOTAL V"].max()
         tick_step = 500_000_000 if max_y > 1_000_000_000 else 100_000_000
         tick_vals = list(range(0, int(max_y + tick_step), int(tick_step)))
         tick_texts = [f"{int(val/1_000_000)}M" for val in tick_vals]
 
-        fig.update_yaxes(
-            title_text="Total Ventas ($)",
-            tickvals=tick_vals,
-            ticktext=tick_texts
-        )
-
-        fig.update_layout(
-            uniformtext_minsize=8,
-            uniformtext_mode="hide",
-            plot_bgcolor="#f9f9f9",
-            title_font_size=18
-        )
-
+        fig.update_yaxes(title_text="Total Ventas ($)", tickvals=tick_vals, ticktext=tick_texts)
+        fig.update_layout(uniformtext_minsize=8, uniformtext_mode="hide", plot_bgcolor="#f9f9f9", title_font_size=18)
         st.plotly_chart(fig, use_container_width=True)
 
-        # ---------- Tablas de top formateadas ----------
-        def formatear_tabla_miles(df_tabla):
-            df_fmt = df_tabla.reset_index().copy()
-            if 'index' in df_fmt.columns:
-                df_fmt.rename(columns={'index': 'GRUPO TRES'}, inplace=True)
+        # -------- FORMATO VISUAL PARA STREAMLIT --------
+        def formatear_con_k_y_color(df_tabla):
+            df_copy = df_tabla.copy()
+            # Aplicar formato a todas las columnas
+            for col in df_copy.columns:
+                df_copy[col] = df_copy[col].apply(lambda x: f'<span style="color: red;">{formato_miles(x)}</span>' if x == 0 else formato_miles(x))
+            return df_copy
 
-            for col in df_fmt.columns[1:]:
-                df_fmt[col] = df_fmt[col].apply(lambda x: f"${x/1_000:,.0f}K")
+        # -------- DESCARGA EN EXCEL --------
+        def generar_excel_sin_formato(df_original):
+            return generar_excel(df_original.reset_index())
 
-            return df_fmt
-    
-        def formatear_tabla_miles(df_tabla):
-                df_fmt = df_tabla.reset_index().copy()
-                if 'index' in df_fmt.columns:
-                    df_fmt.rename(columns={'index': 'GRUPO TRES'}, inplace=True)
+        # Mostrar y descargar top GRUPO TRES
+        st.subheader(f"🏆 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
+        tabla3_formateada = formatear_con_k_y_color(top_grupo3)
+        # Convertir a HTML sin el encabezado del índice
+        st.markdown(tabla3_formateada.to_html(escape=False, header=True), unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo3.reset_index()), file_name="Top Grupo 3.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with col2:
+            st.download_button("⬇️ Descargar Todo", data=generar_excel_sin_formato(top_grupo3), file_name="Todo Grupo 3.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-                for col in df_fmt.columns[1:]:
-                    df_fmt[col] = df_fmt[col].apply(lambda x: f"${x/1_000:,.0f}K")
+        # Mostrar y descargar top GRUPO CUATRO
+        st.subheader(f"🥇 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
+        tabla4_formateada = formatear_con_k_y_color(top_grupo4)
+        # Convertir a HTML sin el encabezado del índice
+        st.markdown(tabla4_formateada.to_html(escape=False, header=True), unsafe_allow_html=True)
+        col3, col4 = st.columns([1, 1])
+        with col3:
+            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo4.reset_index()), file_name="Top Grupo 4.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        with col4:
+            st.download_button("⬇️ Descargar Todo", data=generar_excel_sin_formato(top_grupo4), file_name="Todo Grupo 4.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-                return df_fmt
-
-
-        styled_top3 = formatear_tabla_miles(top_grupo3)
-        styled_top4 = formatear_tabla_miles(top_grupo4)
-
-
-        # CSS personalizado para insertar en la página
-        css = """
-        <style>
-            .dataframe th {
-                text-align: center !important;
-                font-weight: bold !important;
-                background-color: #f0f2f6 !important;
-            }
-            .dataframe td {
-                text-align: right !important;
-            }
-            .dataframe td:first-child {
-                text-align: left !important;
-            }
-        </style>
-        """
-
-        # Inyectar CSS personalizado
-        st.markdown(css, unsafe_allow_html=True)
-
-        st.subheader(f"\U0001F3C6 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-        st.dataframe(styled_top3, hide_index=True, use_container_width=True)
-
-        st.subheader(f"\U0001F3C5 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
-        st.dataframe(styled_top4, hide_index=True, use_container_width=True)
-    
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
     @st.cache_data
@@ -224,13 +191,12 @@ elif pagina == "Vendedores":
 
     df = cargar_datos()
     df["MES"] = df["MES"].astype(str).str.strip().str.upper()
-    # Validar columnas necesarias
     columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "GRUPO TRES"}
     if not columnas_requeridas.issubset(df.columns):
         st.error(f"Faltan columnas requeridas: {columnas_requeridas - set(df.columns)}")
         st.stop()
 
-    # Filtros
+    # Segmentadores
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -250,50 +216,39 @@ elif pagina == "Vendedores":
             else sorted(df["CIUDAD"].dropna().unique().tolist())
         )
         ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + sorted(ciudades_disponibles))
-    # Checkbox para excluir a TPM EQUIPOS S.A.S
+
     excluir_tpm = st.checkbox("Excluir TPM EQUIPOS S.A.S", value=False)
-    df["VENDEDOR"] = df["VENDEDOR"].str.strip()
-    df["AÑO"] = pd.to_numeric(df["AÑO"], errors="coerce")
-    df["TOTAL V"] = pd.to_numeric(df["TOTAL V"], errors="coerce")
 
-    
-    # Aplicar filtros
+    # Filtros
     df_filtrado = df.copy()
-
     if vendedor_seleccionado != "Todos":
         df_filtrado = df_filtrado[df_filtrado["VENDEDOR"].str.strip() == vendedor_seleccionado.strip()]
-
-
     if año_seleccionado != "Todos":
         df_filtrado = df_filtrado[df_filtrado["AÑO"] == int(año_seleccionado)]
-
     if dpto_seleccionado != "Todos":
         df_filtrado = df_filtrado[df_filtrado["DPTO"] == dpto_seleccionado]
-
     if ciudad_seleccionada != "Todos":
         df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_seleccionada]
     if excluir_tpm:
-        df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.upper().str.strip() != "TPM EQUIPOS S.A.S"]    
-    
+        df_filtrado = df_filtrado[df_filtrado["RAZON SOCIAL"].str.upper().str.strip() != "TPM EQUIPOS S.A.S"]
+
     if df_filtrado.empty:
         st.warning("No hay datos para los filtros seleccionados.")
+        st.stop()
 
-        # Agrupación para la gráfica
+    # Gráfico
     if vendedor_seleccionado == "Todos" or año_seleccionado == "Todos":
-            df_agrupado = df_filtrado.groupby("AÑO")["TOTAL V"].sum().reset_index()
-            eje_x = "AÑO"
-            titulo_grafica = "Ventas Totales de la Empresa" if vendedor_seleccionado == "Todos" else f"Ventas de {vendedor_seleccionado} por Año"
+        df_agrupado = df_filtrado.groupby("AÑO")["TOTAL V"].sum().reset_index()
+        eje_x = "AÑO"
+        titulo_grafica = "Ventas Totales de la Empresa" if vendedor_seleccionado == "Todos" else f"Ventas de {vendedor_seleccionado} por Año"
     else:
-            orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
-            df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
-            df_agrupado = df_filtrado.groupby("MES")["TOTAL V"].sum().reset_index()
-            eje_x = "MES"
-            titulo_grafica = f"Ventas de {vendedor_seleccionado} en {año_seleccionado}"
+        orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+        df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
+        df_agrupado = df_filtrado.groupby("MES")["TOTAL V"].sum().reset_index()
+        eje_x = "MES"
+        titulo_grafica = f"Ventas de {vendedor_seleccionado} en {año_seleccionado}"
 
-      # Mostrar gráfico
-    # Convertir ventas a millones
     df_agrupado["TOTAL V (K)"] = df_agrupado["TOTAL V"] / 1_000
-
     fig = px.bar(
         df_agrupado,
         x=eje_x,
@@ -302,69 +257,129 @@ elif pagina == "Vendedores":
         text_auto=True,
         color_discrete_sequence=["#00CED1"]
     )
-
-    # Formato de texto encima de cada barra
     fig.update_traces(
         text=df_agrupado["TOTAL V (K)"].apply(lambda x: f"{x:,.0f}K"),
         textposition="outside",
         textfont=dict(size=12)
-)
-
-    # Eje Y con sufijo fijo en millones
+    )
     fig.update_layout(
-        yaxis_tickformat=",",              # Muestra números normales con coma
-        yaxis_ticksuffix="",              # Siempre mostrar "M"
-        yaxis_tickprefix="$",              # Agrega símbolo de dólar
+        yaxis_tickformat=",",
+        yaxis_tickprefix="$",
         xaxis_title=eje_x,
         yaxis_title="Ventas (Miles $)"
     )
-
-    # Eje X como categoría si es por AÑO
     if eje_x == "AÑO":
         fig.update_xaxes(type="category")
 
     st.plotly_chart(fig, use_container_width=True)
 
-        # Tablas Top 10
-   
-
-    # Determinar si agrupar por AÑO o MES
-    agrupador = "MES" if año_seleccionado != "Todos" else "AÑO"
-    orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
-    if agrupador == "MES":
-        df_filtrado["MES"] = pd.Categorical(df_filtrado["MES"], categories=orden_meses, ordered=True)
-
-    # Formato en miles (K)
+    # Funciones para tablas
     def formato_miles(x):
-        return f"$ {x / 1_000:,.0f}K"
+        if isinstance(x, (int, float)):
+            return f"$ {x / 1_000:,.0f}K"
+        return x
 
-    def mostrar_top_personalizado(df_top, titulo, index_col, top_n=10):
-        df_top["TOTAL"] = df_top.sum(axis=1)
-        df_top = df_top.sort_values("TOTAL", ascending=False).drop(columns="TOTAL").head(top_n)
-        df_top = df_top.applymap(lambda x: formato_miles(x))
-        st.markdown(f"<h3 style='text-align: center;'>{titulo}</h3>", unsafe_allow_html=True)
-        st.dataframe(df_top.reset_index(), use_container_width=True, hide_index=True)
+    def subrayar_ceros(val):
+        """Subrayar en rojo los valores que sean exactamente cero"""
+        if isinstance(val, (int, float)) and val == 0:
+            return 'text-decoration: underline red; color: red;'
+        return ''
 
-    # Top Ubicación
+    def generar_excel(df):
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet("TablaTop")
+
+        # Formatos
+        formato_bold = workbook.add_format({'bold': True})
+        formato_dinero = workbook.add_format({'num_format': '$ #,##0K', 'align': 'right'})
+        formato_rojo = workbook.add_format({'font_color': 'red', 'underline': True})
+        formato_normal = workbook.add_format({'align': 'right'})
+
+        # Escribir encabezados
+        for col_num, col_name in enumerate(df.columns):
+            worksheet.write(0, col_num, col_name, formato_bold)
+
+        # Escribir datos
+        for row_num, row in enumerate(df.itertuples(index=False), start=1):
+            for col_num, value in enumerate(row):
+                if isinstance(value, str) and value.strip() == "$ 0K":
+                    worksheet.write(row_num, col_num, value, formato_rojo)
+                else:
+                    worksheet.write(row_num, col_num, value, formato_normal)
+
+        worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
+        worksheet.freeze_panes(1, 1)
+
+        workbook.close()
+        output.seek(0)
+        return output
+
+    def mostrar_top(df, index_col, titulo, top_n=10):
+        agrupador = "MES" if año_seleccionado != "Todos" else "AÑO"
+        
+        if agrupador == "MES":
+            orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                        "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+            df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
+
+        # Agrupar y pivotear
+        pivot = df.groupby([index_col, agrupador])["TOTAL V"].sum().reset_index()
+        pivot = pivot.pivot(index=index_col, columns=agrupador, values="TOTAL V").fillna(0)
+        pivot["TOTAL"] = pivot.sum(axis=1)
+        pivot = pivot.sort_values("TOTAL", ascending=False).drop(columns="TOTAL")
+        pivot_top = pivot.head(top_n)
+
+        # Crear DataFrame formateado
+        pivot_top_display = pivot_top.copy().reset_index()
+        pivot_top_display = pivot_top_display.rename(columns={index_col: index_col})
+        
+        # Formatear el dataframe para mostrar
+        pivot_top_formateado = pivot_top.copy().applymap(formato_miles)
+        
+        # Aplicar estilo de subrayado para valores cero
+        def estilo_subrayado_rojo(val):
+            if isinstance(val, str) and val.strip() == "$ 0K":
+                return 'text-decoration: underline red; color: red;'
+            return ''
+        
+        # Aplicar el estilo
+        pivot_estilizado = pivot_top_formateado.style.applymap(estilo_subrayado_rojo)
+        
+        # Mostrar tabla
+        st.markdown(f"### {titulo}")
+        st.dataframe(pivot_estilizado, use_container_width=True)
+        
+        # Botones de descarga
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            # Preparar datos para Excel con formato
+            excel_data = pivot_top_formateado.reset_index()
+            st.download_button(
+                "⬇️ Descargar Top",
+                data=generar_excel(excel_data),
+                file_name=f"{titulo} - Top.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        with col2:
+            # Preparar datos completos para Excel con formato
+            pivot_completo_formateado = pivot.copy().applymap(formato_miles).reset_index()
+            st.download_button(
+                "⬇️ Descargar Todo",
+                data=generar_excel(pivot_completo_formateado),
+                file_name=f"{titulo} - Todo.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Mostrar los tops
     st.subheader("🏆 Top 10 por Ubicación")
     if dpto_seleccionado == "Todos":
-        top = df_filtrado.groupby(["DPTO", agrupador])["TOTAL V"].sum().reset_index()
-        top = top.pivot(index="DPTO", columns=agrupador, values="TOTAL V").fillna(0)
-        mostrar_top_personalizado(top, "🏙️ Top por Departamento", "DPTO")
+        mostrar_top(df_filtrado, "DPTO", "🏙️ Top por Departamento")
     else:
-        top = df_filtrado.groupby(["CIUDAD", agrupador])["TOTAL V"].sum().reset_index()
-        top = top.pivot(index="CIUDAD", columns=agrupador, values="TOTAL V").fillna(0)
-        mostrar_top_personalizado(top, "🏙️ Top por Ciudad", "CIUDAD")
+        mostrar_top(df_filtrado, "CIUDAD", "🏙️ Top por Ciudad")
 
-    # Top Referencia
-    top_ref = df_filtrado.groupby(["REFERENCIA", agrupador])["TOTAL V"].sum().reset_index()
-    top_ref = top_ref.pivot(index="REFERENCIA", columns=agrupador, values="TOTAL V").fillna(0)
-    mostrar_top_personalizado(top_ref, "📦 Top 20 Referencias", "REFERENCIA", top_n=20)
-
-    # Top Razón Social
-    top_razon = df_filtrado.groupby(["RAZON SOCIAL", agrupador])["TOTAL V"].sum().reset_index()
-    top_razon = top_razon.pivot(index="RAZON SOCIAL", columns=agrupador, values="TOTAL V").fillna(0)
-    mostrar_top_personalizado(top_razon, "🏢 Top 10 Razón Social", "RAZON SOCIAL", top_n=10)
+    mostrar_top(df_filtrado, "REFERENCIA", "📦 Top 20 Referencias", top_n=20)
+    mostrar_top(df_filtrado, "RAZON SOCIAL", "🏢 Top 10 Razón Social", top_n=10)
 
 elif pagina == "clientes":
     st.title("ℹ️ Clientes")
