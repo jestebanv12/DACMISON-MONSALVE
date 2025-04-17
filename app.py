@@ -35,6 +35,7 @@ def generar_menu():
     # Opciones del menú con emojis o iconos
     opciones = {
         "🏠 Inicio": "inicio",
+        "🔢 Comparativos":"Comparativos",
         "👩‍🏭 Vendedores": "Vendedores",
         "ℹ️ Cliente": "clientes",
         "⚙️ Referencias":"Referencias",
@@ -74,7 +75,7 @@ if pagina == "inicio":
     def generar_excel(df):
         output = BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, sheet_name="Top", index=False)
+            df.to_excel(writer, sheet_name="Top", index=True)  # Mantener el índice en el Excel
         return output.getvalue()
 
     df = cargar_datos()
@@ -93,14 +94,7 @@ if pagina == "inicio":
             df_filtrado["Crecimiento (%)"] = df_filtrado["Crecimiento (%)"].round(2)
             eje_x = "AÑO"
             titulo_grafica = "Ventas Anuales con Crecimiento (%)"
-
-            top_grupo3 = df.groupby(["GRUPO TRES", "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
-            top_grupo3 = top_grupo3.pivot(index="GRUPO TRES", columns="AÑO", values="TOTAL V").fillna(0)
-            top_grupo3 = top_grupo3.assign(TOTAL=top_grupo3.sum(axis=1)).nlargest(10, "TOTAL").drop(columns="TOTAL")
-
-            top_grupo4 = df.groupby(["GRUPO CUATRO", "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
-            top_grupo4 = top_grupo4.pivot(index="GRUPO CUATRO", columns="AÑO", values="TOTAL V").fillna(0)
-            top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
+            df_filtrado_ano = df  # Usar el DataFrame completo cuando se selecciona "Todos"
 
         else:
             df["MES"] = df["MES"].str.upper()
@@ -113,15 +107,26 @@ if pagina == "inicio":
             df_filtrado["Crecimiento (%)"] = df_filtrado["Crecimiento (%)"].round(2)
             titulo_grafica = f"Ventas Mensuales en {año_seleccionado} con Crecimiento (%)"
             eje_x = "MES"
+            df_filtrado_ano = df[df["AÑO"] == int(año_seleccionado)]  # Usar el DataFrame filtrado por año
 
-            df_filtrado_ano = df[df["AÑO"] == int(año_seleccionado)]
-            top_grupo3 = df_filtrado_ano.groupby(["GRUPO TRES", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
-            top_grupo3 = top_grupo3.pivot(index="GRUPO TRES", columns="MES", values="TOTAL V").fillna(0)
-            top_grupo3 = top_grupo3.assign(TOTAL=top_grupo3.sum(axis=1)).nlargest(10, "TOTAL").drop(columns="TOTAL")
+        # Calcular top_grupo3 y top_grupo4 después de definir df_filtrado_ano
+        grupo3_col = "GRUPO TRES"
+        if año_seleccionado == "Todos":
+            top_grupo3 = df.groupby([grupo3_col, "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo3 = top_grupo3.pivot(index=grupo3_col, columns="AÑO", values="TOTAL V").fillna(0)
+        else:
+            top_grupo3 = df_filtrado_ano.groupby([grupo3_col, "MES"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo3 = top_grupo3.pivot(index=grupo3_col, columns="MES", values="TOTAL V").fillna(0)
+        top_grupo3 = top_grupo3.assign(TOTAL=top_grupo3.sum(axis=1)).nlargest(10, "TOTAL").drop(columns="TOTAL")
 
-            top_grupo4 = df_filtrado_ano.groupby(["GRUPO CUATRO", "MES"]).agg({"TOTAL V": "sum"}).reset_index()
-            top_grupo4 = top_grupo4.pivot(index="GRUPO CUATRO", columns="MES", values="TOTAL V").fillna(0)
-            top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
+        grupo4_col = "GRUPO CUATRO"
+        if año_seleccionado == "Todos":
+            top_grupo4 = df.groupby([grupo4_col, "AÑO"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo4 = top_grupo4.pivot(index=grupo4_col, columns="AÑO", values="TOTAL V").fillna(0)
+        else:
+            top_grupo4 = df_filtrado_ano.groupby([grupo4_col, "MES"]).agg({"TOTAL V": "sum"}).reset_index()
+            top_grupo4 = top_grupo4.pivot(index=grupo4_col, columns="MES", values="TOTAL V").fillna(0)
+        top_grupo4 = top_grupo4.assign(TOTAL=top_grupo4.sum(axis=1)).nlargest(20, "TOTAL").drop(columns="TOTAL")
 
         # Crear gráfico
         fig = px.bar(
@@ -146,38 +151,188 @@ if pagina == "inicio":
         st.plotly_chart(fig, use_container_width=True)
 
         # -------- FORMATO VISUAL PARA STREAMLIT --------
-        def formatear_con_k_y_color(df_tabla):
+        def formatear_con_k_y_color(df_tabla, nombre_indice):
             df_copy = df_tabla.copy()
-            # Aplicar formato a todas las columnas
+            df_copy.index.name = None  # Quitar el nombre del índice para que no aparezca como fila
+
+            # Construir la tabla HTML manualmente para controlar el encabezado
+            html = "<table border=\"1\" class=\"dataframe\">"
+            html += "  <thead>"
+            html += "    <tr style=\"text-align: right;\">"
+            html += f"      <th>{nombre_indice}</th>"  # Encabezado para la primera columna (índice)
             for col in df_copy.columns:
-                df_copy[col] = df_copy[col].apply(lambda x: f'<span style="color: red;">{formato_miles(x)}</span>' if x == 0 else formato_miles(x))
-            return df_copy
+                html += f"      <th>{col}</th>"
+            html += "    </tr>"
+            html += "  </thead>"
+            html += "  <tbody>"
+            for index, row in df_copy.iterrows():
+                html += "    <tr>"
+                html += f"      <th>{index}</th>"  # Valor del índice
+                for col in df_copy.columns:
+                    value = row[col]
+                    formatted_value = f'<span style="color: red;">{formato_miles(value)}</span>' if value == 0 else formato_miles(value)
+                    html += f"      <td>{formatted_value}</td>"
+                html += "    </tr>"
+            html += "  </tbody>"
+            html += "</table>"
+            return html
 
         # -------- DESCARGA EN EXCEL --------
         def generar_excel_sin_formato(df_original):
-            return generar_excel(df_original.reset_index())
+            return generar_excel(df_original)  # No resetear el índice para la descarga "Todo"
 
         # Mostrar y descargar top GRUPO TRES
         st.subheader(f"🏆 Top 10 'GRUPO TRES' por Ventas en {año_seleccionado}")
-        tabla3_formateada = formatear_con_k_y_color(top_grupo3)
-        # Convertir a HTML sin el encabezado del índice
-        st.markdown(tabla3_formateada.to_html(escape=False, header=True), unsafe_allow_html=True)
+        html_tabla3 = formatear_con_k_y_color(top_grupo3, grupo3_col)
+        st.markdown(html_tabla3, unsafe_allow_html=True)
         col1, col2 = st.columns([1, 1])
         with col1:
-            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo3.reset_index()), file_name="Top Grupo 3.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo3), file_name="Top Grupo 3.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with col2:
             st.download_button("⬇️ Descargar Todo", data=generar_excel_sin_formato(top_grupo3), file_name="Todo Grupo 3.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         # Mostrar y descargar top GRUPO CUATRO
         st.subheader(f"🥇 Top 20 'GRUPO CUATRO' por Ventas en {año_seleccionado}")
-        tabla4_formateada = formatear_con_k_y_color(top_grupo4)
-        # Convertir a HTML sin el encabezado del índice
-        st.markdown(tabla4_formateada.to_html(escape=False, header=True), unsafe_allow_html=True)
+        html_tabla4 = formatear_con_k_y_color(top_grupo4, grupo4_col)
+        st.markdown(html_tabla4, unsafe_allow_html=True)
         col3, col4 = st.columns([1, 1])
         with col3:
-            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo4.reset_index()), file_name="Top Grupo 4.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button("⬇️ Descargar Top", data=generar_excel(top_grupo4), file_name="Top Grupo 4.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with col4:
             st.download_button("⬇️ Descargar Todo", data=generar_excel_sin_formato(top_grupo4), file_name="Todo Grupo 4.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+elif pagina=="Comparativos":
+    st.title("🔢 Comparativos por mes")
+    # Cargar datos
+    @st.cache_data
+    def cargar_datos():
+        try:
+            df = pd.read_csv("Informe ventas.csv", sep=";")
+        except:
+            df = pd.read_csv("Informe ventas.csv", sep=",")
+        df.columns = df.columns.str.strip()
+        df["AÑO"] = df["AÑO"].astype(int)
+        df["MES"] = df["MES"].str.upper()
+        orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+        df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
+        return df
+
+    df = cargar_datos()
+    años_disponibles = sorted(df["AÑO"].unique())
+
+    # Segmentadores
+    col1, col2 = st.columns(2)
+    with col1:
+        año1 = st.selectbox("Selecciona AÑO 1:", ["Todos"] + años_disponibles)
+    with col2:
+        año2 = st.selectbox("Selecciona AÑO 2:", ["Todos"] + años_disponibles)
+
+    # Validación
+    if (año1 != "Todos" and año2 == "Todos") or (año2 != "Todos" and año1 == "Todos"):
+        st.warning("⚠️ Si seleccionas un año específico, debes seleccionar otro para comparar.")
+    else:
+        if año1 == "Todos" and año2 == "Todos":
+            df_group = df.groupby(["MES", "AÑO"])["TOTAL V"].sum().reset_index()
+            df_group["TOTAL V"] = df_group["TOTAL V"] / 1_000
+            df_group = df_group.sort_values(by=["MES", "AÑO"])
+
+            st.subheader("📊 Comparación de ventas por MES para todos los años")
+
+            fig = go.Figure()
+            años = sorted(df_group["AÑO"].unique())
+            colores = px.colors.qualitative.Set2[:len(años)]
+            for i, año in enumerate(años):
+                df_año = df_group[df_group["AÑO"] == año]
+                fig.add_trace(go.Bar(
+                    x=df_año["MES"],
+                    y=df_año["TOTAL V"],
+                    name=str(año),
+                    marker_color=colores[i % len(colores)]
+                ))
+            fig.update_layout(
+                barmode='group',
+                yaxis_title="Ventas ($K)",
+                xaxis_title="Mes",
+                plot_bgcolor="#fafafa",
+                bargap=0.3,
+                bargroupgap=0.1,
+                xaxis={'categoryorder': 'array', 'categoryarray': df["MES"].cat.categories}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("📋 Tabla de ventas por MES y AÑO")
+            tabla_pivot = df_group.pivot(index="MES", columns="AÑO", values="TOTAL V").fillna(0)
+            st.dataframe(tabla_pivot.style.format("${:,.0f}K"), use_container_width=True)
+
+            # Descargar Excel
+            buffer = BytesIO()
+            tabla_pivot.to_excel(buffer, index=True)
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=buffer.getvalue(),
+                file_name="ventas_todos_los_años.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        else:
+            df_comp = df[df["AÑO"].isin([año1, año2])]
+            tabla = df_comp.groupby(["AÑO", "MES"])["TOTAL V"].sum().reset_index()
+            tabla["TOTAL V"] = tabla["TOTAL V"] / 1_000
+            tabla["MES"] = pd.Categorical(tabla["MES"], categories=df["MES"].cat.categories, ordered=True)
+            tabla = tabla.sort_values(by=["MES", "AÑO"])
+
+            tabla_pivot = tabla.pivot(index="MES", columns="AÑO", values="TOTAL V").fillna(0)
+            tabla_pivot["% CRECIMIENTO"] = (
+                (tabla_pivot[año2] - tabla_pivot[año1]) / tabla_pivot[año1].replace(0, 1)
+            ) * 100
+            tabla_pivot["% CRECIMIENTO"] = tabla_pivot["% CRECIMIENTO"].round(2)
+
+            st.subheader(f"📊 Comparación de ventas mensuales entre {año1} y {año2}")
+
+            fig = go.Figure()
+            df_año1 = tabla[tabla["AÑO"] == año1]
+            fig.add_trace(go.Bar(
+                x=df_año1["MES"],
+                y=df_año1["TOTAL V"],
+                name=str(año1),
+                marker_color="#2ecc71"
+            ))
+            df_año2 = tabla[tabla["AÑO"] == año2]
+            fig.add_trace(go.Bar(
+                x=df_año2["MES"],
+                y=df_año2["TOTAL V"],
+                name=str(año2),
+                marker_color="#e74c3c"
+            ))
+            fig.update_layout(
+                barmode='group',
+                yaxis_title="Ventas ($K)",
+                xaxis_title="Mes",
+                plot_bgcolor="#fafafa",
+                bargap=0.3,
+                bargroupgap=0.1,
+                xaxis={'categoryorder': 'array', 'categoryarray': df["MES"].cat.categories}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            st.subheader("📋 Tabla comparativa de ventas y % crecimiento")
+            st.dataframe(
+                tabla_pivot.style
+                .format({año1: "${:,.0f}K", año2: "${:,.0f}K", "% CRECIMIENTO": "{:+.2f}%"})
+                .applymap(lambda x: "color: red;" if isinstance(x, (int, float)) and x < 0 else "")
+            , use_container_width=True)
+
+            # Descargar tabla comparativa
+            buffer2 = BytesIO()
+            tabla_pivot.to_excel(buffer2, index=True)
+            st.download_button(
+                label="📥 Descargar Excel",
+                data=buffer2.getvalue(),
+                file_name=f"comparativa_{año1}_vs_{año2}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+                
 
 elif pagina == "Vendedores":
     st.title("👩‍🏭 Ventas por vendedor")
