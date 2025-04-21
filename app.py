@@ -904,6 +904,7 @@ if pagina == "Geolocalización":
     from folium.plugins import HeatMap
     
     # Cargar datos
+    # ---------- CARGA DE DATOS ----------
     @st.cache_data
     def cargar_datos():
         df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
@@ -920,9 +921,14 @@ if pagina == "Geolocalización":
 
     df = cargar_datos()
     df_geo = cargar_geo()
-    df = df.merge(df_geo, how="left", on="CIUDAD")
 
-    # ----------------- FILTROS EN PANTALLA PRINCIPAL -----------------
+    # Aseguramos que los nombres de columnas sean correctos
+    if "DPTO" in df.columns and "CIUDAD" in df.columns and "DEPARTAMENTO" in df_geo.columns:
+        df = df.merge(df_geo, how="left", left_on=["DPTO", "CIUDAD"], right_on=["DEPARTAMENTO", "CIUDAD"])
+    else:
+        st.error("❌ Asegúrate de que las columnas 'DPTO' y 'CIUDAD' estén en el archivo de ventas, y 'DEPARTAMENTO' y 'CIUDAD' en la geolocalización.")
+
+    # ---------- FILTROS ----------
     st.subheader("📍 Segmentación del Mapa de Ventas")
 
     col1, col2, col3 = st.columns(3)
@@ -934,7 +940,6 @@ if pagina == "Geolocalización":
     gr3_sel = col4.selectbox("Grupo Tres", ["Todos"] + sorted(df["GRUPO TRES"].dropna().unique()))
     gr4_sel = col5.selectbox("Grupo Cuatro", ["Todos"] + sorted(df["GRUPO CUATRO"].dropna().unique()))
 
-    # ----------------- APLICAR FILTROS -----------------
     df_filtrado = df.copy()
     if año_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["AÑO"] == año_sel]
@@ -947,7 +952,7 @@ if pagina == "Geolocalización":
     if gr4_sel != "Todos":
         df_filtrado = df_filtrado[df_filtrado["GRUPO CUATRO"] == gr4_sel]
 
-    # ----------------- MAPA -----------------
+    # ---------- MAPA ----------
     if "LATITUD" in df_filtrado.columns and "LONGITUD" in df_filtrado.columns and not df_filtrado[["LATITUD", "LONGITUD"]].dropna().empty:
         df_mapa = df_filtrado.dropna(subset=["LATITUD", "LONGITUD"])
         df_mapa = df_mapa.groupby(["CIUDAD", "LATITUD", "LONGITUD"]).agg({
@@ -996,17 +1001,15 @@ if pagina == "Geolocalización":
 
             folium_static(m)
 
-            st.markdown("""
-            ### 🎯 Interpretación del Mapa:
-            - 🔴 Rojo: Más del **10%** de ventas
-            - 🟠 Naranja: Entre **5% y 10%**
-            - 🔵 Azul: Menos del **5%**
+            st.markdown("""### 🎯 Interpretación del Mapa:
+    - 🔴 Rojo: Más del **10%** de ventas  
+    - 🟠 Naranja: Entre **5% y 10%**  
+    - 🔵 Azul: Menos del **5%**  
             """)
         else:
             st.warning("⚠️ No hay datos válidos para mostrar en el mapa después de aplicar los filtros.")
     else:
         st.warning("⚠️ No se encontraron columnas de LATITUD y LONGITUD válidas.")
-
 
 if pagina == "TPM":
     @st.cache_data
