@@ -14,7 +14,7 @@ import xlsxwriter
 
 
 st.set_page_config(
-    page_title="TPM",
+    page_title="TPM DACMISON MONSALVE",
     page_icon="Logo.png",
     layout="wide"
 )
@@ -42,8 +42,7 @@ def generar_menu():
         "🔢 Comparativo Ref.":"Comparativo Ref",
         "🔢 Comparativo por Grupo.":"Comparativo por Grupo",
         "🗺️ Geolocalización":"Geolocalización",
-        "💯TPM":"TPM"
-        
+       
     }
 
     # Crear botones en la barra lateral
@@ -220,6 +219,10 @@ elif pagina=="Comparativos":
         orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
                     "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
         df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
+
+        # 🔽 FILTRAR AL VENDEDOR
+        df = df[df["VENDEDOR"] == "DACMINSON DE JESUS MONSALVE SALAZAR"]
+
         return df
 
     def tabla_html_centrada(df, formato_columnas=None, nombre_indice=""):
@@ -451,27 +454,33 @@ elif pagina == "Vendedores":
         st.stop()
 
     # Segmentadores
+    # Segmentadores con filtros dependientes del vendedor
+    vendedor_seleccionado = "DACMINSON DE JESUS MONSALVE SALAZAR"
+    df_vendedor = df[df["VENDEDOR"].str.strip() == vendedor_seleccionado.strip()]
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        vendedor_seleccionado = st.selectbox("Vendedor", ["Todos"] + sorted(df["VENDEDOR"].dropna().unique()))
+        st.markdown("DACMINSON DE JESUS MONSALVE SALAZAR")
 
     with col2:
-        años_disponibles = sorted(df["AÑO"].dropna().unique())
+        años_disponibles = sorted(df_vendedor["AÑO"].dropna().unique())
         año_seleccionado = st.selectbox("Año", ["Todos"] + list(map(str, años_disponibles)))
 
     with col3:
-        dpto_seleccionado = st.selectbox("Departamento", ["Todos"] + sorted(df["DPTO"].dropna().unique()))
+        dptos_disponibles = sorted(df_vendedor["DPTO"].dropna().unique())
+        dpto_seleccionado = st.selectbox("Departamento", ["Todos"] + dptos_disponibles)
 
     with col4:
-        ciudades_disponibles = (
-            df[df["DPTO"] == dpto_seleccionado]["CIUDAD"].dropna().unique().tolist()
-            if dpto_seleccionado != "Todos"
-            else sorted(df["CIUDAD"].dropna().unique().tolist())
-        )
-        ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + sorted(ciudades_disponibles))
+        if dpto_seleccionado != "Todos":
+            ciudades_disponibles = sorted(df_vendedor[df_vendedor["DPTO"] == dpto_seleccionado]["CIUDAD"].dropna().unique())
+        else:
+            ciudades_disponibles = sorted(df_vendedor["CIUDAD"].dropna().unique())
+        ciudad_seleccionada = st.selectbox("Ciudad", ["Todos"] + ciudades_disponibles)
 
+    # Filtro adicional
     excluir_tpm = st.checkbox("Excluir TPM EQUIPOS S.A.S", value=False)
+
 
     # Filtros
     df_filtrado = df.copy()
@@ -711,6 +720,9 @@ elif pagina == "clientes":
         return df
 
     df = cargar_datos()
+    # Filtrar por vendedor específico
+    df = df[df["VENDEDOR"].str.upper().str.strip() == "DACMINSON DE JESUS MONSALVE SALAZAR"]
+
 
     # Verificar columnas requeridas
     columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "RAZON SOCIAL", "REFERENCIA"}
@@ -939,6 +951,7 @@ if pagina == "Referencias":
         return df
 
     df = cargar_datos()
+    df = df[df["VENDEDOR"].str.upper().str.strip() == "DACMINSON DE JESUS MONSALVE SALAZAR"]
 
     columnas_requeridas = {"AÑO", "MES", "DIA", "TOTAL V", "RAZON SOCIAL", "REFERENCIA"}
     if not columnas_requeridas.issubset(set(df.columns)):
@@ -1174,7 +1187,9 @@ elif pagina=="Comparativo Ref":
         orden_meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
                     "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
         df["MES"] = pd.Categorical(df["MES"], categories=orden_meses, ordered=True)
+        df = df[df["VENDEDOR"].str.upper().str.strip() == "DACMINSON DE JESUS MONSALVE SALAZAR"]
         return df
+    
 
     def tabla_html_centrada(df, formato_columnas=None, nombre_indice=""):
         df_copy = df.copy()
@@ -1360,8 +1375,8 @@ elif pagina=="Comparativo Ref":
                 st.markdown("<h3 style='text-align: center;'>🏢 Top 10 por Ventas</h3>", unsafe_allow_html=True)
                 top10_clientes = mostrar_top10(df_filtrado, "RAZON SOCIAL", "Clientes")
                 
-                st.markdown("<h3 style='text-align: center;'>🧑‍💼 Top 10 por Ventas</h3>", unsafe_allow_html=True)
-                top10_vendedores = mostrar_top10(df_filtrado, "VENDEDOR", "Vendedores")
+                #st.markdown("<h3 style='text-align: center;'>🧑‍💼 Top 10 por Ventas</h3>", unsafe_allow_html=True)
+                #top10_vendedores = mostrar_top10(df_filtrado, "VENDEDOR", "Vendedores")
 
         else:
             # Primero mostrar la gráfica
@@ -1454,8 +1469,8 @@ elif pagina=="Comparativo Ref":
                 st.markdown("<h3 style='text-align: center;'>🏢 Top 10 Clientes por Ventas</h3>", unsafe_allow_html=True)
                 top10_clientes = mostrar_top10(df_filtrado, "RAZON SOCIAL", "Clientes", año1, año2)
                 
-                st.markdown("<h3 style='text-align: center;'>🧑‍💼 Top 10 Vendedores por Ventas</h3>", unsafe_allow_html=True)
-                top10_vendedores = mostrar_top10(df_filtrado, "VENDEDOR", "Vendedores", año1, año2)
+                #st.markdown("<h3 style='text-align: center;'>🧑‍💼 Top 10 Vendedores por Ventas</h3>", unsafe_allow_html=True)
+                #top10_vendedores = mostrar_top10(df_filtrado, "VENDEDOR", "Vendedores", año1, año2)
 
 elif pagina=="Comparativo por Grupo":
     st.title("🔢 Comparativo por Grupo")
@@ -1464,6 +1479,7 @@ elif pagina=="Comparativo por Grupo":
         df = pd.read_csv("Informe ventas.csv", sep=";")
         df.columns = df.columns.str.strip()
         df["AÑO"] = df["AÑO"].astype(int)
+        df = df[df["VENDEDOR"].str.upper().str.strip() == "DACMINSON DE JESUS MONSALVE SALAZAR"]
         return df
 
     def mostrar_top20_por_grupo(df, grupo_col, grupo_nombre, año1, año2):
@@ -1522,6 +1538,7 @@ if pagina == "Geolocalización":
     def cargar_datos():
         df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
         df.columns = df.columns.str.upper().str.strip()
+        df = df[df["VENDEDOR"].str.upper().str.strip() == "DACMINSON DE JESUS MONSALVE SALAZAR"]
         return df
 
     @st.cache_data
@@ -1624,109 +1641,3 @@ if pagina == "Geolocalización":
     else:
         st.warning("⚠️ No se encontraron columnas de LATITUD y LONGITUD válidas.")
 
-if pagina == "TPM":
-    @st.cache_data
-    def cargar_datos():
-        df = pd.read_csv("Informe ventas.csv", sep=None, engine="python", dtype={"AÑO": str, "MES": str})
-        df.columns = df.columns.str.strip()
-        df.rename(columns=lambda x: x.strip(), inplace=True)
-
-        df = df.drop_duplicates()
-
-        # Diccionario para convertir meses
-        meses_dict = {
-            "ENERO": 1, "FEBRERO": 2, "MARZO": 3, "ABRIL": 4, "MAYO": 5, "JUNIO": 6,
-            "JULIO": 7, "AGOSTO": 8, "SEPTIEMBRE": 9, "OCTUBRE": 10, "NOVIEMBRE": 11, "DICIEMBRE": 12
-        }
-
-        if df["MES"].dtype == object:
-            df["MES"] = df["MES"].str.upper().map(meses_dict)
-
-        df["AÑO"] = df["AÑO"].astype(float).astype(int)
-
-        df["TOTAL C"] = df["TOTAL C"].astype(str).str.replace(".", "", regex=False).str.replace(",", ".", regex=False)
-        df["TOTAL C"] = pd.to_numeric(df["TOTAL C"], errors="coerce")
-
-        df["MES"] = pd.to_numeric(df["MES"], errors="coerce").fillna(0).astype(int)
-        df = df[df["MES"].between(1, 12)]
-
-        return df
-
-    df = cargar_datos()
-
-    # Verificar columnas requeridas
-    columnas_requeridas = {"AÑO", "MES", "TOTAL V", "TOTAL C"}
-    if not columnas_requeridas.issubset(set(df.columns)):
-        st.error(f"El archivo CSV debe contener las columnas exactas: {columnas_requeridas}")
-    else:
-        st.subheader("📊 Ventas y Costos Totales", divider="blue")
-
-        # Segmentadores
-        col1, col2, col3, col4 = st.columns(4)
-        año_sel = col1.selectbox("Año", ["Todos"] + sorted(df["AÑO"].unique()))
-        ref_sel = col2.selectbox("Referencia", ["Todos"] + sorted(df["REFERENCIA"].dropna().unique()))
-        dep_sel = col3.selectbox("Departamento", ["Todos"] + sorted(df["DPTO"].dropna().unique()))
-        ciudad_sel = col4.selectbox("Ciudad", ["Todos"] + sorted(df["CIUDAD"].dropna().unique()))
-
-        col5, col6, col7 = st.columns(3)
-        g2_sel = col5.selectbox("Grupo 2", ["Todos"] + sorted(df["GRUPO DOS"].dropna().unique()))
-        g3_sel = col6.selectbox("Grupo 3", ["Todos"] + sorted(df["GRUPO TRES"].dropna().unique()))
-        g4_sel = col7.selectbox("Grupo 4", ["Todos"] + sorted(df["GRUPO CUATRO"].dropna().unique()))
-
-        # Aplicar filtros
-        df_filtrado = df.copy()
-        if año_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["AÑO"] == int(año_sel)]
-        if ref_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["REFERENCIA"] == ref_sel]
-        if dep_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["DPTO"] == dep_sel]
-        if ciudad_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["CIUDAD"] == ciudad_sel]
-        if g2_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["GRUPO DOS"] == g2_sel]
-        if g3_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["GRUPO TRES"] == g3_sel]
-        if g4_sel != "Todos":
-            df_filtrado = df_filtrado[df_filtrado["GRUPO CUATRO"] == g4_sel]
-
-        if df_filtrado.empty:
-            st.warning("⚠️ No hay datos disponibles para esta combinación de filtros.")
-        else:
-            # Mapear meses
-            meses_map = {
-                1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
-                7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-            }
-            df_filtrado["MES"] = df_filtrado["MES"].map(meses_map)
-
-            # Agrupación
-            x_axis = "AÑO" if año_sel == "Todos" else "MES"
-            df_grafico = df_filtrado.groupby(x_axis).agg({"TOTAL V": "sum", "TOTAL C": "sum"}).reset_index()
-
-            # Ordenar meses
-            if x_axis == "MES":
-                df_grafico["MES"] = pd.Categorical(df_grafico["MES"], categories=meses_map.values(), ordered=True)
-                df_grafico = df_grafico.sort_values("MES")
-
-            # Gráfico de áreas
-            # Escalar valores a miles
-            df_grafico["TOTAL V"] = df_grafico["TOTAL V"] / 1000
-            df_grafico["TOTAL C"] = df_grafico["TOTAL C"] / 1000
-
-            # Gráfico de áreas
-            fig_area = px.area(df_grafico, x=x_axis, y=["TOTAL C", "TOTAL V"],
-                            title="Ventas y Costos Totales", labels={"value": "Monto ($ Miles)"},
-                            color_discrete_sequence=["#5F9EA0","#006400"])
-
-            fig_area.update_xaxes(tickmode="array", tickvals=df_grafico[x_axis].unique(), tickformat=".0f")
-            fig_area.update_layout(
-                yaxis=dict(
-                    tickformat=",.0f",
-                    title="Monto ($ Miles)"
-                )
-            )
-
-            st.plotly_chart(fig_area, use_container_width=True)
-
-    
